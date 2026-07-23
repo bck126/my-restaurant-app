@@ -18,7 +18,7 @@ export default function QrGeneratorPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-800">
-      {/* ส่วนตั้งค่า (ซ่อนเมื่อกดพิมพ์) */}
+      {/* แผงควบคุม (ซ่อนเวลาพิมพ์) */}
       <div className="print:hidden max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-4">
           <div>
@@ -26,7 +26,7 @@ export default function QrGeneratorPage() {
               🖨️ ระบบสร้าง QR Code ติดโต๊ะอาหาร
             </h1>
             <p className="text-xs text-slate-500">
-              ดึงรูป logo.png จากโฟลเดอร์ public แสดงผลอัตโนมัติ
+              กำหนดชื่อร้านและจำนวนโต๊ะเพื่อพิมพ์นำไปติดที่โต๊ะ
             </p>
           </div>
 
@@ -80,7 +80,7 @@ export default function QrGeneratorPage() {
         </div>
       </div>
 
-      {/* รายการ QR Code */}
+      {/* รายการ QR Code Cards */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4 print:max-w-none">
         {Array.from({ length: tableCount }, (_, i) => i + 1).map((tableNumber) => {
           const qrUrl = `${baseUrl}?table=${tableNumber}`;
@@ -95,6 +95,8 @@ export default function QrGeneratorPage() {
                 <img
                   src="/logo.png"
                   alt="Logo"
+                  width={64}
+                  height={64}
                   className="w-16 h-16 object-contain mb-2 rounded-xl"
                 />
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
