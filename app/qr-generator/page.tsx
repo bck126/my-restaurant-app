@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 export default function QrGeneratorPage() {
   const [tableCount, setTableCount] = useState<number>(6);
-  const [restaurantName, setRestaurantName] = useState('ร้านอาหารอร่อยจัง');
+  const [restaurantName, setRestaurantName] = useState('ส้มตำ ริมเขื่อน');
   const [subTitle, setSubTitle] = useState('สแกนเพื่อดูเมนูและสั่งอาหาร');
 
   const baseUrl = typeof window !== 'undefined' 
