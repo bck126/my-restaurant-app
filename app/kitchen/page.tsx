@@ -2,183 +2,126 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 interface OrderItem {
   id: string;
   name: string;
   quantity: number;
+  note?: string;
 }
 
 interface Order {
   id: string;
+  orderType?: 'dine-in' | 'takeaway';
   tableNo: string;
+  customerName?: string;
   items: OrderItem[];
   totalPrice: number;
-  status: 'PENDING' | 'COOKING' | 'SERVED';
+  status: 'pending' | 'cooking' | 'served' | 'completed' | 'cancelled';
   createdAt: any;
 }
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [audioAllowed, setAudioAllowed] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const isFirstLoad = useRef(true);
 
-  // 1. โหลดระบบเสียง
   useEffect(() => {
-    audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-    // หรือถ้ามีไฟล์ในเครื่องใช้: new Audio('/notification.mp3');
-  }, []);
-
-  // 2. ฟังก์ชันเล่นเสียงเตือน
-  const playSound = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0; // เล่นใหม่ตั้งแต่ต้น
-      audioRef.current.play().catch((err) => {
-        console.log('Autoplay blocked by browser:', err);
-      });
-    }
-  };
-
-  // 3. ดักจับออเดอร์ใหม่จาก Firebase แบบ Realtime
-  useEffect(() => {
-    const q = query(
-      collection(db, 'orders'),
-      where('status', 'in', ['PENDING', 'COOKING'])
-    );
-
+    const q = query(collection(db, 'orders'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newOrders: Order[] = [];
-      let hasNewOrderAdded = false;
-
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          hasNewOrderAdded = true;
-        }
-      });
-
+      const orderList: Order[] = [];
       snapshot.forEach((doc) => {
-        newOrders.push({ id: doc.id, ...doc.data() } as Order);
+        orderList.push({ id: doc.id, ...doc.data() } as Order);
       });
-
-      // สั่งเล่นเสียงเฉพาะเมื่อมีออเดอร์เพิ่มขึ้นมาใหม่ (ไม่ใช่การโหลดครั้งแรก)
-      if (hasNewOrderAdded && !isFirstLoad.current) {
-        playSound();
-      }
-
-      setOrders(newOrders);
-      isFirstLoad.current = false;
+      // กรองเฉพาะออเดอร์ที่ยังทำไม่เสร็จ
+      setOrders(orderList.filter(o => o.status === 'pending' || o.status === 'cooking'));
     });
 
     return () => unsubscribe();
   }, []);
 
-  // 4. อัปเดตสถานะออเดอร์ (เช่น ทำเสร็จแล้ว)
-  const handleUpdateStatus = async (orderId: string, nextStatus: string) => {
+  const updateStatus = async (orderId: string, newStatus: string) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, { status: nextStatus });
+      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
     } catch (error) {
-      console.error('Error updating status:', error);
-    }
-  };
-
-  // 5. ปุ่มเปิดใช้งานเสียง (เปิดหน้าเว็บครั้งแรก)
-  const enableAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.play().then(() => {
-        audioRef.current?.pause();
-        setAudioAllowed(true);
-      }).catch(console.error);
+      console.error('Update status error:', error);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
+    <main className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
         <div>
-          <h1 className="text-3xl font-black">👨‍🍳 หน้าจอห้องครัว (Kitchen Display)</h1>
-          <p className="text-slate-400 text-sm mt-1">รายการออเดอร์จะอัปเดตและส่งเสียงเตือนอัตโนมัติ</p>
+          <h1 className="text-2xl font-black text-amber-400">👨‍🍳 จอแสดงรายการอาหาร (ห้องครัว)</h1>
+          <p className="text-xs text-slate-400">รายการอาหารที่ต้องทำเสิร์ฟ</p>
         </div>
-
-        {/* ปุ่มกดยืนยันการเปิดเสียง (เบราว์เซอร์บังคับให้ User กดก่อนถึงจะเล่นเสียงได้) */}
-        {!audioAllowed ? (
-          <button
-            onClick={enableAudio}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-5 py-2.5 rounded-xl text-sm shadow-lg animate-pulse"
-          >
-            🔔 กดที่นี่เพื่อเปิดเสียงเตือน
-          </button>
-        ) : (
-          <div className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            เปิดระบบเสียงเตือนแล้ว
-          </div>
-        )}
+        <div className="bg-slate-800 px-4 py-2 rounded-xl text-sm font-bold text-slate-300">
+          คิวทั้งหมด: {orders.length} ออเดอร์
+        </div>
       </div>
 
-      {/* รายการออเดอร์ที่เข้ามา */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {orders.length === 0 ? (
-          <div className="col-span-full text-center py-20 text-slate-500 font-bold text-lg">
-            ยังไม่มีออเดอร์เข้ามาในขณะนี้...
-          </div>
-        ) : (
-          orders.map((order) => (
-            <div
-              key={order.id}
-              className={`p-5 rounded-2xl border ${
-                order.status === 'PENDING'
-                  ? 'bg-slate-800 border-amber-500/50 shadow-amber-500/10 shadow-lg'
-                  : 'bg-slate-800/60 border-slate-700'
+        {orders.map((order) => {
+          const isTakeaway = order.orderType === 'takeaway';
+          return (
+            <div 
+              key={order.id} 
+              className={`p-5 rounded-2xl border-2 bg-slate-800 shadow-lg flex flex-col justify-between ${
+                isTakeaway ? 'border-purple-500' : 'border-amber-500'
               }`}
             >
-              <div className="flex justify-between items-center mb-3 pb-3 border-b border-slate-700">
-                <span className="bg-emerald-600 text-white font-black px-3 py-1 rounded-lg text-lg">
-                  โต๊ะ {order.tableNo}
-                </span>
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-                  {order.status === 'PENDING' ? '⏳ รอทำ' : '🍳 กำลังทำ'}
-                </span>
-              </div>
-
-              {/* เมนูที่สั่ง */}
-              <ul className="space-y-2 mb-5">
-                {order.items?.map((item, idx) => (
-                  <li key={idx} className="flex justify-between items-center text-lg font-bold">
-                    <span>{item.name}</span>
-                    <span className="bg-slate-700 px-3 py-0.5 rounded-md text-amber-400">
-                      x{item.quantity}
+              <div>
+                {/* Header บอกประเภทออเดอร์ */}
+                <div className="flex justify-between items-start border-b border-slate-700 pb-3 mb-3">
+                  <div>
+                    <span className={`inline-block text-xs font-black px-2.5 py-1 rounded-lg mb-1 ${
+                      isTakeaway ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {isTakeaway ? '🛍️ ใส่ถุง (กลับบ้าน)' : '🪑 ใส่จาน (ทานที่ร้าน)'}
                     </span>
-                  </li>
-                ))}
-              </ul>
+                    <h2 className="text-xl font-black text-white">
+                      {isTakeaway ? `ลูกค้า: ${order.customerName || 'ไม่ระบุชื่อ'}` : `โต๊ะ ${order.tableNo}`}
+                    </h2>
+                  </div>
+                  <span className="text-xs text-slate-400 font-mono">
+                    {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'เมื่อสักครู่'}
+                  </span>
+                </div>
+
+                {/* รายการเมนูที่ต้องทำ */}
+                <div className="space-y-2 mb-4">
+                  {order.items?.map((item, idx) => (
+                    <div key={idx} className="bg-slate-900/60 p-2.5 rounded-xl flex justify-between items-center border border-slate-700/50">
+                      <div>
+                        <span className="font-bold text-base text-slate-100">{item.name}</span>
+                        {item.note && <p className="text-xs text-amber-400">*( {item.note} )</p>}
+                      </div>
+                      <span className="text-xl font-black text-amber-400 bg-amber-400/10 px-3 py-1 rounded-lg">
+                        x{item.quantity}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {/* ปุ่มเปลี่ยนสถานะ */}
-              <div className="flex gap-2">
-                {order.status === 'PENDING' && (
-                  <button
-                    onClick={() => handleUpdateStatus(order.id, 'COOKING')}
-                    className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 rounded-xl transition"
-                  >
-                    เริ่มทำอาหาร
-                  </button>
-                )}
-                {order.status === 'COOKING' && (
-                  <button
-                    onClick={() => handleUpdateStatus(order.id, 'SERVED')}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition"
-                  >
-                    เสิร์ฟแล้ว / เสร็จสิ้น
-                  </button>
-                )}
+              <div className="pt-2 border-t border-slate-700/50 flex gap-2">
+                <button
+                  onClick={() => updateStatus(order.id, 'served')}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold rounded-xl text-sm transition shadow-md"
+                >
+                  ✅ ทำเสร็จแล้ว / พร้อมเสิร์ฟ
+                </button>
               </div>
             </div>
-          ))
+          );
+        })}
+
+        {orders.length === 0 && (
+          <div className="col-span-full text-center py-20 text-slate-500 font-bold">
+            ยังไม่มีรายการอาหารที่ต้องทำในขณะนี้ ☕
+          </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
