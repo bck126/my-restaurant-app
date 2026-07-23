@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { db } from '../firebase';
+import { db } from '../../firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface MenuItem {
