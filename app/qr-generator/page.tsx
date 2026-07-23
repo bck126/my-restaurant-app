@@ -3,16 +3,48 @@
 import { useState } from 'react';
 import QRCode from 'react-qr-code';
 
-export default function AdminQRCode() {
-  const [tableCount, setTableCount] = useState<number>(6);
-  // ✏️ สามารถตั้งชื่อร้าน และข้อความกำกับตรงนี้ได้เลยครับ
-  const [restaurantName, setRestaurantName] = useState('ร้านอาหารของคุณ'); 
-  const [subTitle, setSubTitle] = useState('สแกนเพื่อดูเมนูและสั่งอาหาร');
+// 🔑 API Key ImgBB สำหรับอัปโหลดโลโก้ร้าน
+const IMGBB_API_KEY = 'b17a4ff3cb7cea8b4c87d85a8ea450e9';
 
-  // URL พื้นฐานของระบบสั่งอาหาร (หน้าบ้าน)
+export default function QrGeneratorPage() {
+  const [tableCount, setTableCount] = useState<number>(6);
+  const [restaurantName, setRestaurantName] = useState('ชื่อร้านของคุณ');
+  const [subTitle, setSubTitle] = useState('สแกนเพื่อดูเมนูและสั่งอาหาร');
+  const [logoUrl, setLogoUrl] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+
+  // URL พื้นฐานของระบบสั่งอาหาร
   const baseUrl = typeof window !== 'undefined' 
     ? window.location.origin 
     : 'https://my-restaurant-app-iota.vercel.app';
+
+  // อัปโหลดโลโก้ขึ้น ImgBB
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLogoUrl(data.data.url);
+      } else {
+        alert('อัปโหลดโลโก้ไม่สำเร็จ');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('เกิดข้อผิดพลาดในการอัปโหลดรูป');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -20,59 +52,57 @@ export default function AdminQRCode() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-800">
-      {/* ส่วนควบคุม (จะไม่ถูกพิมพ์ออกมาเมื่อกด Print) */}
+      {/* ส่วนตั้งค่า (ซ่อนเมื่อกดพิมพ์) */}
       <div className="print:hidden max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 space-y-4">
-        <div className="flex flex-wrap justify-between items-center gap-4">
+        <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-4">
           <div>
             <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
               🖨️ ระบบสร้าง QR Code ติดโต๊ะอาหาร
             </h1>
             <p className="text-xs text-slate-500">
-              กำหนดชื่อร้าน จำนวนโต๊ะ แล้วกดพิมพ์เพื่อนำไปติดที่โต๊ะได้เลย
+              ใส่ชื่อร้าน อัปโหลดโลโก้ และกำหนดจำนวนโต๊ะได้ตามต้องการ
             </p>
           </div>
 
           <button
             onClick={handlePrint}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 text-sm"
+            className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold px-5 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 text-sm"
           >
             🖨️ พิมพ์ / Print QR Code
           </button>
         </div>
 
-        <hr className="border-slate-100" />
-
-        {/* ฟอร์มตั้งค่า ชื่อร้าน และ จำนวนโต๊ะ */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* แผงฟอร์มตั้งค่า */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="text-xs font-bold text-slate-600 block mb-1">
-              ชื่อร้านอาหารบนใบ QR Code
+              ชื่อร้านอาหาร *
             </label>
             <input
               type="text"
               value={restaurantName}
               onChange={(e) => setRestaurantName(e.target.value)}
-              placeholder="เช่น ร้านส้มตำนายก"
-              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
+              placeholder="เช่น ร้านส้มตำยกก๊วน"
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
             />
           </div>
 
           <div>
             <label className="text-xs font-bold text-slate-600 block mb-1">
-              ข้อความบรรยายใต้ชื่อร้าน
+              ข้อความบรรยาย
             </label>
             <input
               type="text"
               value={subTitle}
               onChange={(e) => setSubTitle(e.target.value)}
               placeholder="เช่น สแกนเพื่อดูเมนูและสั่งอาหาร"
-              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
             />
           </div>
 
           <div>
             <label className="text-xs font-bold text-slate-600 block mb-1">
-              จำนวนโต๊ะทั้งหมด
+              จำนวนโต๊ะ
             </label>
             <input
               type="number"
@@ -83,10 +113,23 @@ export default function AdminQRCode() {
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
             />
           </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-600 block mb-1">
+              อัปโหลดโลโก้ร้าน
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+            />
+            {isUploading && <p className="text-[10px] text-blue-600 mt-1 font-bold">กำลังอัปโหลดรูป...</p>}
+          </div>
         </div>
       </div>
 
-      {/* ส่วนแสดงรายการ QR Code สำหรับสั่งพิมพ์ (จะแสดงทั้งบนหน้าจอและกระดาษพิมพ์) */}
+      {/* รายการ QR Code สำหรับพิมพ์ */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4 print:max-w-none">
         {Array.from({ length: tableCount }, (_, i) => i + 1).map((tableNumber) => {
           const qrUrl = `${baseUrl}?table=${tableNumber}`;
@@ -94,10 +137,17 @@ export default function AdminQRCode() {
           return (
             <div
               key={tableNumber}
-              className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-between text-center break-inside-avoid print:shadow-none print:border-2 print:border-slate-300"
+              className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-between text-center break-inside-avoid print:shadow-none print:border-2 print:border-slate-300 relative"
             >
-              {/* ชื่อร้านและคำอธิบาย */}
-              <div className="mb-4">
+              {/* โลโก้และชื่อร้าน */}
+              <div className="mb-3 flex flex-col items-center">
+                {logoUrl && (
+                  <img
+                    src={logoUrl}
+                    alt="Logo"
+                    className="w-14 h-14 object-contain rounded-full mb-2 border border-slate-100 p-0.5 bg-white shadow-xs"
+                  />
+                )}
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
                   {restaurantName}
                 </h2>
@@ -106,8 +156,8 @@ export default function AdminQRCode() {
                 </p>
               </div>
 
-              {/* ตัว QR Code */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner my-2 flex items-center justify-center">
+              {/* QR Code */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner my-2 flex items-center justify-center relative">
                 <QRCode
                   value={qrUrl}
                   size={180}
@@ -116,8 +166,8 @@ export default function AdminQRCode() {
                 />
               </div>
 
-              {/* ป้ายบอกเลขโต๊ะ */}
-              <div className="w-full mt-4">
+              {/* เลขโต๊ะ */}
+              <div className="w-full mt-3">
                 <div className="bg-slate-900 text-white font-black text-lg py-2.5 rounded-2xl tracking-wider shadow-sm">
                   โต๊ะ {tableNumber}
                 </div>
