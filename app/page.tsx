@@ -30,7 +30,7 @@ export default function Home() {
     }
   }, []);
 
-  // 2. ดึงรายการเมนูจาก Firebase (แทนที่เมนูแบบเดิม)
+  // 2. ดึงรายการเมนูจาก Firebase
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'menu'), (snapshot) => {
       const items: MenuItem[] = [];
@@ -94,8 +94,14 @@ export default function Home() {
     <main className="min-h-screen bg-slate-100 p-4 pb-32 text-slate-800 max-w-md mx-auto">
       {/* Header */}
       <header className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 text-center mb-5">
-        <h1 className="text-2xl font-black text-slate-900 mb-2">ร้านอาหารอร่อยจัง 🍲</h1>
-        <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-1.5 rounded-full text-sm font-bold border border-emerald-200">
+        <div className="flex justify-center items-center py-2">
+          <img 
+            src="/logo.png" 
+            alt="ส้มตำริมเขื่อน" 
+            className="h-24 w-auto object-contain" 
+          />
+        </div>
+        <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-1.5 rounded-full text-sm font-bold border border-emerald-200 mt-2">
           <span>🍽️ ทานที่ร้าน</span>
           <span className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-md text-xs font-black">
             โต๊ะ {tableNo}
