@@ -83,8 +83,7 @@ export default function QrGeneratorPage() {
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4 print:max-w-none">
         {Array.from({ length: tableCount }, (_, i) => i + 1).map((tableNumber) => {
           const qrUrl = `${baseUrl}?table=${tableNumber}`;
-          // สร้าง QR Code ด้วย API ของ api.qrserver.com
-          const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
+          const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrUrl)}`;
 
           return (
             <div
@@ -92,18 +91,18 @@ export default function QrGeneratorPage() {
               className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-between text-center break-inside-avoid print:shadow-none print:border-2 print:border-slate-300 relative"
             >
               {/* โลโก้และชื่อร้าน */}
-              <div className="mb-3 flex flex-col items-center">
-                <img
-                  src="/logo.png"
-                  alt="Logo"
-                  width={64}
-                  height={64}
-                  className="w-16 h-16 object-contain mb-2 rounded-xl"
-                  onError={(e) => {
-                    // ถ้าหารูป logo.png ไม่เจอ จะซ่อนไว้ไม่ให้ขึ้นรูปแตก
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
+              <div className="mb-2 flex flex-col items-center w-full">
+                <div className="h-20 w-full flex items-center justify-center mb-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/logo.png"
+                    alt="Logo"
+                    className="max-h-20 max-w-[85%] object-contain drop-shadow-sm"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                </div>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
                   {restaurantName}
                 </h2>
@@ -112,8 +111,9 @@ export default function QrGeneratorPage() {
                 </p>
               </div>
 
-              {/* QR Code (Pure HTML Image) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner my-2 flex items-center justify-center relative">
+              {/* QR Code */}
+              <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-inner my-2 flex items-center justify-center relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={qrImgSrc}
                   alt={`QR Code Table ${tableNumber}`}
@@ -122,7 +122,7 @@ export default function QrGeneratorPage() {
               </div>
 
               {/* ป้ายโต๊ะ */}
-              <div className="w-full mt-3">
+              <div className="w-full mt-2">
                 <div className="bg-slate-900 text-white font-black text-lg py-2.5 rounded-2xl tracking-wider shadow-sm">
                   โต๊ะ {tableNumber}
                 </div>
