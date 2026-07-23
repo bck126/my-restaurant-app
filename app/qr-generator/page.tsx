@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import QRCode from 'react-qr-code';
 
 export default function QrGeneratorPage() {
   const [tableCount, setTableCount] = useState<number>(6);
@@ -18,7 +17,7 @@ export default function QrGeneratorPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-800">
-      {/* แผงตั้งค่า (ซ่อนเวลาพิมพ์) */}
+      {/* แผงควบคุม (ซ่อนเวลาพิมพ์) */}
       <div className="print:hidden max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-4">
           <div>
@@ -84,6 +83,8 @@ export default function QrGeneratorPage() {
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4 print:max-w-none">
         {Array.from({ length: tableCount }, (_, i) => i + 1).map((tableNumber) => {
           const qrUrl = `${baseUrl}?table=${tableNumber}`;
+          // สร้าง QR Code ด้วย API ของ api.qrserver.com
+          const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
 
           return (
             <div
@@ -98,6 +99,10 @@ export default function QrGeneratorPage() {
                   width={64}
                   height={64}
                   className="w-16 h-16 object-contain mb-2 rounded-xl"
+                  onError={(e) => {
+                    // ถ้าหารูป logo.png ไม่เจอ จะซ่อนไว้ไม่ให้ขึ้นรูปแตก
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
                 />
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
                   {restaurantName}
@@ -107,13 +112,12 @@ export default function QrGeneratorPage() {
                 </p>
               </div>
 
-              {/* QR Code */}
+              {/* QR Code (Pure HTML Image) */}
               <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner my-2 flex items-center justify-center relative">
-                <QRCode
-                  value={qrUrl}
-                  size={180}
-                  style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                  viewBox={`0 0 256 256`}
+                <img
+                  src={qrImgSrc}
+                  alt={`QR Code Table ${tableNumber}`}
+                  className="w-44 h-44 object-contain"
                 />
               </div>
 
