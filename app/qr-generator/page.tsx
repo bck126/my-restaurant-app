@@ -3,48 +3,17 @@
 import { useState } from 'react';
 import QRCode from 'react-qr-code';
 
-// 🔑 API Key ImgBB สำหรับอัปโหลดโลโก้ร้าน
-const IMGBB_API_KEY = 'b17a4ff3cb7cea8b4c87d85a8ea450e9';
-
 export default function QrGeneratorPage() {
   const [tableCount, setTableCount] = useState<number>(6);
-  const [restaurantName, setRestaurantName] = useState('ชื่อร้านของคุณ');
+  const [restaurantName, setRestaurantName] = useState('ร้านอาหารอร่อยจัง');
   const [subTitle, setSubTitle] = useState('สแกนเพื่อดูเมนูและสั่งอาหาร');
-  const [logoUrl, setLogoUrl] = useState<string>('');
-  const [isUploading, setIsUploading] = useState<boolean>(false);
+  // ตั้ง Path เริ่มต้นไปที่ไฟล์โลโก้ในโฟลเดอร์ public
+  const [logoPath, setLogoPath] = useState<string>('/logo.png');
 
   // URL พื้นฐานของระบบสั่งอาหาร
   const baseUrl = typeof window !== 'undefined' 
     ? window.location.origin 
     : 'https://my-restaurant-app-iota.vercel.app';
-
-  // อัปโหลดโลโก้ขึ้น ImgBB
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success) {
-        setLogoUrl(data.data.url);
-      } else {
-        alert('อัปโหลดโลโก้ไม่สำเร็จ');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('เกิดข้อผิดพลาดในการอัปโหลดรูป');
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   const handlePrint = () => {
     window.print();
@@ -60,7 +29,7 @@ export default function QrGeneratorPage() {
               🖨️ ระบบสร้าง QR Code ติดโต๊ะอาหาร
             </h1>
             <p className="text-xs text-slate-500">
-              ใส่ชื่อร้าน อัปโหลดโลโก้ และกำหนดจำนวนโต๊ะได้ตามต้องการ
+              ตั้งค่าชื่อร้าน และเรียกใช้รูปโลโก้จากโฟลเดอร์ public
             </p>
           </div>
 
@@ -114,17 +83,21 @@ export default function QrGeneratorPage() {
             />
           </div>
 
+          {/* ชื่อไฟล์รูปใน public */}
           <div>
             <label className="text-xs font-bold text-slate-600 block mb-1">
-              อัปโหลดโลโก้ร้าน
+              พาธไฟล์โลโก้ใน public
             </label>
             <input
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              type="text"
+              value={logoPath}
+              onChange={(e) => setLogoPath(e.target.value)}
+              placeholder="/logo.png"
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             />
-            {isUploading && <p className="text-[10px] text-blue-600 mt-1 font-bold">กำลังอัปโหลดรูป...</p>}
+            <p className="text-[10px] text-slate-400 mt-1">
+              เช่น <code className="bg-slate-100 px-1 py-0.5 rounded">/logo.png</code> หรือ <code className="bg-slate-100 px-1 py-0.5 rounded">/logo.jpg</code>
+            </p>
           </div>
         </div>
       </div>
@@ -141,13 +114,17 @@ export default function QrGeneratorPage() {
             >
               {/* โลโก้และชื่อร้าน */}
               <div className="mb-3 flex flex-col items-center">
-                {logoUrl && (
+                {logoPath ? (
                   <img
-                    src={logoUrl}
+                    src={logoPath}
                     alt="Logo"
-                    className="w-14 h-14 object-contain rounded-full mb-2 border border-slate-100 p-0.5 bg-white shadow-xs"
+                    className="w-16 h-16 object-contain rounded-full mb-2 border border-slate-100 p-1 bg-white shadow-xs"
+                    onError={(e) => {
+                      // ถ้าหาไฟล์ไม่พบ ให้แสดงอิโมจิแทน
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
                   />
-                )}
+                ) : null}
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
                   {restaurantName}
                 </h2>
