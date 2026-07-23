@@ -7,10 +7,12 @@ export default function QRGeneratorPage() {
   const [tableCount, setTableCount] = useState<number>(6); // จำนวนโต๊ะเริ่มต้น 6 โต๊ะ
   const [baseUrl, setBaseUrl] = useState<string>('');
 
-  useEffect(() => {
-    // ดึง Domain / URL ปัจจุบันอัตโนมัติ
-    setBaseUrl('https://kind-birds-count.loca.lt');
-  }, []);
+     useEffect(() => {
+  // ดึง URL/Domain ปัจจุบันของเว็บโดยอัตโนมัติ (ใช้ได้ทั้งตอนรัน local และขึ้นเว็บจริง)
+  if (typeof window !== 'undefined') {
+    setBaseUrl(window.location.origin);
+  }
+}, []);
 
   const handlePrint = () => {
     window.print();
