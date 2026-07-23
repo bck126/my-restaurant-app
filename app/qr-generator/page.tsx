@@ -18,7 +18,7 @@ export default function QrGeneratorPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-800">
-      {/* แผงควบคุม (ซ่อนเวลาพิมพ์) */}
+      {/* แผงตั้งค่า (ซ่อนเวลาพิมพ์) */}
       <div className="print:hidden max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-4">
           <div>
