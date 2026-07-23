@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '../../firebase'; // เช็ก path ให้ตรงกับโครงสร้างโฟลเดอร์ของคุณ
+import { db } from '../../firebase'; // เช็ก path ให้ตรงกับโปรเจกต์ของคุณ
 import { 
   collection, 
   addDoc, 
@@ -11,6 +11,9 @@ import {
   deleteDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
+
+// 🔑 API Key ของ ImgBB สำหรับอัปโหลดรูปภาพฟรี
+const IMGBB_API_KEY = 'b17a4ff3cb7cea8b4c87d85a8ea450e9'; 
 
 interface MenuItem {
   id: string;
@@ -23,12 +26,14 @@ interface MenuItem {
 export default function AdminMenu() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   
-  // State ฟอร์ม (ใช้ทั้งเพิ่มและแก้ไข)
+  // State ฟอร์ม
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState('เมนูส้มตำ');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // ดึงข้อมูลเมนูจาก Firebase Real-time
@@ -44,27 +49,59 @@ export default function AdminMenu() {
     return () => unsubscribe();
   }, []);
 
-  // บันทึกข้อมูล (เพิ่มใหม่ หรือ อัปเดตเดิม)
+  // เลือกรูปจากเครื่อง/มือถือ
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  // อัปโหลดรูปภาพไปที่ ImgBB แบบฟรี
+  const uploadToImgBB = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      return data.data.url;
+    } else {
+      throw new Error('Upload image failed');
+    }
+  };
+
+  // บันทึกข้อมูล
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !price) return alert('กรุณากรอกชื่อและราคาอาหาร');
 
     setLoading(true);
     try {
+      let finalImageUrl = imageUrl;
+
+      // ถ้ามีการเลือกไฟล์รูปจากเครื่อง ให้อัปโหลดเข้า ImgBB
+      if (imageFile) {
+        finalImageUrl = await uploadToImgBB(imageFile);
+      }
+
       const menuData = {
         name,
         price: Number(price),
         category: category || 'ทั่วไป',
-        imageUrl: imageUrl.trim() || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food',
+        imageUrl: finalImageUrl || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food',
         updatedAt: serverTimestamp(),
       };
 
       if (editingId) {
-        // แก้ไขเมนูเดิม
         await updateDoc(doc(db, 'menu', editingId), menuData);
         alert('อัปเดตเมนูเรียบร้อยแล้ว!');
       } else {
-        // เพิ่มเมนูใหม่
         await addDoc(collection(db, 'menu'), {
           ...menuData,
           createdAt: serverTimestamp(),
@@ -75,7 +112,7 @@ export default function AdminMenu() {
       resetForm();
     } catch (error) {
       console.error('Save Error:', error);
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+      alert('เกิดข้อผิดพลาดในการอัปโหลดรูปหรือบันทึกข้อมูล');
     } finally {
       setLoading(false);
     }
@@ -88,6 +125,8 @@ export default function AdminMenu() {
     setPrice(item.price.toString());
     setCategory(item.category || 'ทั่วไป');
     setImageUrl(item.imageUrl || '');
+    setImagePreview(item.imageUrl || null);
+    setImageFile(null);
   };
 
   // ลบเมนู
@@ -110,6 +149,8 @@ export default function AdminMenu() {
     setPrice('');
     setCategory('เมนูส้มตำ');
     setImageUrl('');
+    setImageFile(null);
+    setImagePreview(null);
   };
 
   return (
@@ -174,16 +215,23 @@ export default function AdminMenu() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-600 block mb-1">URL รูปภาพ (ถ้ามี)</label>
+              <label className="text-xs font-bold text-slate-600 block mb-1">เลือกรูปภาพ (จากมือถือ/คอม)</label>
               <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://... หรือ /logo.png"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
               />
             </div>
           </div>
+
+          {/* แสดงรูปตัวอย่าง */}
+          {imagePreview && (
+            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg" />
+              <span className="text-xs text-slate-500 font-medium">รูปภาพตัวอย่างที่จะแสดง</span>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-2">
             {editingId && (
@@ -200,7 +248,7 @@ export default function AdminMenu() {
               disabled={loading}
               className="flex-1 py-3 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition disabled:opacity-50 cursor-pointer"
             >
-              {loading ? 'กำลังบันทึก...' : editingId ? '💾 บันทึกการแก้ไข' : '✨ เพิ่มเมนู'}
+              {loading ? 'กำลังอัปโหลดรูปและบันทึก...' : editingId ? '💾 บันทึกการแก้ไข' : '✨ เพิ่มเมนู'}
             </button>
           </div>
         </form>
