@@ -30,7 +30,7 @@ function KitchenContent() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const isInitialLoad = useRef<boolean>(true);
 
-  // ฟังก์ชันเล่นเสียงเตือนแบบเร่งความดัง + เสียงแหลมคมสำหรับห้องครัว
+ // ฟังก์ชันเล่นเสียงกริ่งไฟฟ้า (กริ๊งงงงงงง) ยาว 3 ครั้ง สำหรับห้องครัว
   const playAlertSound = () => {
     try {
       if (!audioCtxRef.current) {
@@ -43,35 +43,57 @@ function KitchenContent() {
         ctx.resume();
       }
 
-      // เล่นเสียง Beep แรงๆ 3 จังหวะ (ตู้ด-ตู้ด-ตู้ด!)
-      const playBeep = (delay: number, frequency: number, duration: number = 0.2) => {
-        const osc = ctx.createOscillator();
+      // ฟังก์ชันจำลองเสียงกริ่งกระดิ่งไฟฟ้า 1 ครั้ง (ยาวตามเวลา duration)
+      const ringBell = (startTime: number, duration: number = 0.8) => {
+        const oscMain = ctx.createOscillator();
+        const oscSub = ctx.createOscillator();
+        const lfo = ctx.createOscillator(); // ตัวสั่นคลื่นรัวๆ แบบกริ่ง
+        const lfoGain = ctx.createGain();
         const gain = ctx.createGain();
 
-        // เปลี่ยนเป็น 'square' จะได้เสียงแหลม คม และแทรกผ่านเสียงรบกวนในครัวได้ดีที่สุด
-        osc.type = 'square'; 
-        osc.frequency.setValueAtTime(frequency, ctx.currentTime + delay);
+        // 1. กำหนดรูปแบบคลื่นเสียงให้มีความแหลมและก้องสไตล์โลหะ
+        oscMain.type = 'sawtooth';
+        oscSub.type = 'square';
 
-        // เร่งระดับความดังสูงสุด (Gain = 1.0)
-        gain.gain.setValueAtTime(1.0, ctx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + duration);
+        // 2. ตั้งความถี่สองโทนเสียงคู่กัน (เหมือนเสียงลูกหินกระทบกระดิ่งโลหะ)
+        oscMain.frequency.setValueAtTime(1400, ctx.currentTime + startTime);
+        oscSub.frequency.setValueAtTime(1850, ctx.currentTime + startTime);
 
-        osc.connect(gain);
+        // 3. ตัวสั่นรัวๆ (LFO) สั่นด้วยความเร็ว 35 Hz (ทำให้เกิดเสียง "กรี้ยงงงงงงง")
+        lfo.frequency.setValueAtTime(35, ctx.currentTime + startTime);
+        lfoGain.gain.setValueAtTime(300, ctx.currentTime + startTime);
+
+        lfo.connect(oscMain.frequency);
+        lfo.connect(oscSub.frequency);
+
+        // 4. เร่งความดังสูงสุด
+        gain.gain.setValueAtTime(0.9, ctx.currentTime + startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+
+        // เชื่อมต่อสัญญาณเสียง
+        oscMain.connect(gain);
+        oscSub.connect(gain);
         gain.connect(ctx.destination);
 
-        osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + duration);
+        // เริ่มและหยุดเล่นเสียง
+        lfo.start(ctx.currentTime + startTime);
+        oscMain.start(ctx.currentTime + startTime);
+        oscSub.start(ctx.currentTime + startTime);
+
+        lfo.stop(ctx.currentTime + startTime + duration);
+        oscMain.stop(ctx.currentTime + startTime + duration);
+        oscSub.stop(ctx.currentTime + startTime + duration);
       };
 
-      // ยิงเสียง 3 จังหวะถี่ๆ ความถี่สูง (1000Hz - 1200Hz - 1500Hz)
-      playBeep(0, 1000, 0.15);
-      playBeep(0.2, 1200, 0.15);
-      playBeep(0.4, 1500, 0.3);
+      // ยิงเสียงกริ่ง "กรี้ยงงงงงงง" ยาวครั้งละ 0.8 วินาที จำนวน 3 ครั้ง
+      ringBell(0, 0.8);      // ครั้งที่ 1
+      ringBell(0.95, 0.8);   // ครั้งที่ 2
+      ringBell(1.9, 1.2);    // ครั้งที่ 3 (ลากยาวปิดท้าย)
+
     } catch (e) {
       console.error('ไม่สามารถเล่นเสียงได้:', e);
     }
   };
-
   // ฟังก์ชันเปิดใช้งานระบบเสียงจากผู้ใช้
   const enableSound = () => {
     if (!audioCtxRef.current) {
