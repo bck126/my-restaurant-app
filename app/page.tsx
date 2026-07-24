@@ -31,6 +31,7 @@ interface SubmittedOrder {
   id: string;
   table: string;
   orderType: string;
+  customerContact?: string;
   items: SubmittedOrderItem[];
   totalPrice: number;
   status: string;
@@ -72,17 +73,8 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime)
+  // 2. ดึงข้อมูลทุกออเดอร์ของโต๊ะนี้ที่ยังไม่ได้รับการเช็กบิล (Realtime)
   useEffect(() => {
-    // ดึงรหัส Active Order IDs ที่เก็บไว้ใน localStorage
-    const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
-
-    if (savedOrderIds.length === 0) {
-      setActiveOrders([]);
-      return;
-    }
-
-    // ดึงข้อมูล Realtime เฉพาะออเดอร์ของโต๊ะนี้ที่ยังไม่เสร็จ/ยังไม่เช็กบิล
     const q = query(
       collection(db, 'orders'),
       where('table', '==', tableParam)
@@ -90,28 +82,29 @@ function MenuContent() {
 
     const unsub = onSnapshot(q, (snapshot) => {
       const fetchedOrders: SubmittedOrder[] = [];
-      const currentActiveIds: string[] = [];
 
       snapshot.docs.forEach((doc) => {
         const data = doc.data() as SubmittedOrder;
-        const orderId = doc.id;
-
-        // รับเฉพาะออเดอร์ที่มีใน localStorage และสถานะไม่ใช่ completed/cancelled
-        if (savedOrderIds.includes(orderId) && data.status !== 'completed' && data.status !== 'cancelled') {
-          fetchedOrders.push({ id: orderId, ...data });
-          currentActiveIds.push(orderId);
+        // กรองเฉพาะออเดอร์ที่สถานะยังไม่เช็กบิล ( completed หรือ cancelled )
+        if (data.status !== 'completed' && data.status !== 'cancelled') {
+          fetchedOrders.push({ id: doc.id, ...data });
         }
       });
 
-      // อัปเดต localStorage ให้เหลือเฉพาะรายการที่ยังชำระเงินไม่เสร็จ
-      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(currentActiveIds));
+      // เรียงลำดับออเดอร์ตามเวลาที่สั่ง (ถ้ามี createdAt)
+      fetchedOrders.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeA - timeB;
+      });
+
       setActiveOrders(fetchedOrders);
     });
 
     return () => unsub();
   }, [tableParam]);
 
-  // คำนวณจำนวนรวมของเมนูนั้นๆ ในตะกร้า (เผื่อมีหลาย note)
+  // คำนวณจำนวนรวมของเมนูนั้นๆ ในตะกร้า
   const getItemQuantityInCart = (itemId: string) => {
     return cart
       .filter((item) => item.id === itemId)
@@ -186,8 +179,14 @@ function MenuContent() {
   // รวมราคาทั้งหมดในตะกร้าปัจจุบัน
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // รวมราคาทั้งหมดที่สั่งเข้าครัวไปแล้ว
+  // รวมราคาทั้งหมดทุกออเดอร์ที่สั่งเข้าครัวไปแล้วแต่ยังไม่ได้เช็กบิล
   const totalSubmittedPrice = activeOrders.reduce((sum, order) => sum + (order.totalPrice || 0), 0);
+
+  // รวมจำนวนรายการอาหารทั้งหมดที่สั่งไปแล้ว
+  const totalSubmittedItemsCount = activeOrders.reduce(
+    (acc, order) => acc + order.items.reduce((iAcc, item) => iAcc + item.quantity, 0),
+    0
+  );
 
   // ส่งออเดอร์เข้า Firestore
   const handleSendOrder = async () => {
@@ -200,7 +199,7 @@ function MenuContent() {
 
     setIsSubmitting(true);
     try {
-      const docRef = await addDoc(collection(db, 'orders'), {
+      await addDoc(collection(db, 'orders'), {
         table: tableParam,
         orderType: orderType,
         customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
@@ -215,11 +214,6 @@ function MenuContent() {
         status: 'pending',
         createdAt: serverTimestamp(),
       });
-
-      // บันทึก Order ID ลงใน localStorage เพื่อให้ติดตามสถานะการสั่งซื้อได้
-      const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
-      savedOrderIds.push(docRef.id);
-      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(savedOrderIds));
 
       setCart([]);
       setCustomerContact('');
@@ -301,7 +295,7 @@ function MenuContent() {
           )}
         </div>
 
-        {/* แถบหมวดหมู่อาหาร สไตล์มินิมอล ไม่กินพื้นที่ */}
+        {/* แถบหมวดหมู่อาหาร สไตล์มินิมอล */}
         <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 px-3 py-1.5 overflow-x-auto flex gap-1.5 no-scrollbar">
           <div className="max-w-3xl mx-auto flex gap-1.5 w-full">
             {categories.map((cat) => (
@@ -328,7 +322,7 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= กล่องแสดงรายการที่ส่งเข้าครัวไปแล้ว (Active Orders) ================= */}
+      {/* ================= กล่องแสดงทุกรายการที่สั่งเข้าครัวไปแล้ว (ยังไม่ได้เช็กบิล) ================= */}
       {activeOrders.length > 0 && (
         <div className="max-w-3xl mx-auto px-3 pt-3">
           <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-300/80 rounded-2xl p-3 shadow-xs">
@@ -339,16 +333,16 @@ function MenuContent() {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
                 </span>
                 <h2 className="font-black text-slate-800 text-xs sm:text-sm">
-                  🍳 รายการที่สั่งเข้าครัวแล้ว ({activeOrders.reduce((acc, o) => acc + o.items.reduce((iAcc, item) => iAcc + item.quantity, 0), 0)} รายการ)
+                  🍳 สั่งเข้าครัวแล้ว ({activeOrders.length} ออเดอร์ / {totalSubmittedItemsCount} รายการ)
                 </h2>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-amber-800 font-black text-xs">
-                  รวม ฿{totalSubmittedPrice}
+                <span className="text-amber-800 font-black text-xs sm:text-sm">
+                  ยอดรวม ฿{totalSubmittedPrice}
                 </span>
                 <button
                   onClick={() => setShowActiveOrdersList(!showActiveOrdersList)}
-                  className="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline"
+                  className="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline ml-1"
                 >
                   {showActiveOrdersList ? 'ซ่อน' : 'ดูรายการ'}
                 </button>
@@ -356,13 +350,16 @@ function MenuContent() {
             </div>
 
             {showActiveOrdersList && (
-              <div className="mt-2 space-y-2.5 max-h-48 overflow-y-auto pr-1">
+              <div className="mt-2 space-y-2.5 max-h-60 overflow-y-auto pr-1">
                 {activeOrders.map((order, idx) => (
-                  <div key={order.id} className="bg-white/80 backdrop-blur-xs p-2.5 rounded-xl border border-amber-200/60 text-xs">
+                  <div key={order.id} className="bg-white/90 backdrop-blur-xs p-2.5 rounded-xl border border-amber-200/60 text-xs shadow-2xs">
                     <div className="flex justify-between items-center mb-1 text-[11px] font-bold text-amber-900 border-b border-slate-100 pb-1">
-                      <span>สั่งรอบที่ {idx + 1} ({order.orderType})</span>
+                      <span>
+                        รอบที่ {idx + 1} ({order.orderType})
+                        {order.customerContact && ` - คุณ ${order.customerContact}`}
+                      </span>
                       <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px]">
-                        {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : '🔥 กำลังปรุงอาหาร'}
+                        {order.status === 'pending' ? '⏳ รอเตรียมอาหาร' : '🔥 กำลังปรุงอาหาร'}
                       </span>
                     </div>
                     <ul className="space-y-1">
