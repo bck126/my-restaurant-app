@@ -156,52 +156,53 @@ function MenuContent() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32">
-      {/* Header + แถบหมวดหมู่ แบบ Sticky ตรึงอยู่ด้านบนสุดตลอดการ Scroll */}
-      <header className="bg-white sticky top-0 z-30 shadow-md border-b border-slate-200">
-        <div className="max-w-xl mx-auto p-4 flex flex-col items-center gap-3">
-          {/* แถวที่ 1: โลโก้ร้าน (ปรับขยายขนาดใหญ่เด่นชัด) */}
-          <div className="h-20 flex items-center justify-center pt-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo.png"
-              alt="โลโก้ ส้มตำ ริมเขื่อน"
-              className="max-h-20 w-auto object-contain drop-shadow-md"
-              onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-            />
+      {/* Header + หมวดหมู่ แบบกะทัดรัด Sticky ด้านบน */}
+      <header className="bg-white sticky top-0 z-30 shadow-sm border-b border-slate-200">
+        <div className="max-w-xl mx-auto px-3 py-2 flex flex-col gap-2">
+          {/* แถวหลักแบบกะทัดรัด: โลโก้ + โต๊ะ + ปุ่มเลือกทานที่ร้าน/กลับบ้าน */}
+          <div className="flex items-center justify-between gap-2">
+            {/* โลโก้ + โต๊ะ */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo.png"
+                alt="โลโก้ ส้มตำ ริมเขื่อน"
+                className="h-10 w-auto object-contain drop-shadow-sm"
+                onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+              />
+              <span className="bg-slate-900 text-white font-black text-xs px-2.5 py-1 rounded-lg shadow-xs whitespace-nowrap">
+                โต๊ะ {tableParam}
+              </span>
+            </div>
+
+            {/* ปุ่มเลือก ทานที่ร้าน / ซื้อกลับบ้าน */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setOrderType('ทานที่ร้าน')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center justify-center gap-1 ${
+                  orderType === 'ทานที่ร้าน'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🍽️ ทานที่ร้าน
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderType('ซื้อกลับบ้าน')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center justify-center gap-1 ${
+                  orderType === 'ซื้อกลับบ้าน'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🛍️ กลับบ้าน
+              </button>
+            </div>
           </div>
 
-          {/* แถวที่ 2: ชื่อโต๊ะ */}
-          <div className="bg-slate-900 text-white font-black px-6 py-1.5 rounded-full text-sm shadow-sm tracking-wide">
-            โต๊ะ {tableParam}
-          </div>
-
-          {/* แถวที่ 3: ปุ่มเลือก ทานที่ร้าน / ซื้อกลับบ้าน */}
-          <div className="w-full grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setOrderType('ทานที่ร้าน')}
-              className={`py-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${
-                orderType === 'ทานที่ร้าน'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              🍽️ ทานที่ร้าน
-            </button>
-            <button
-              type="button"
-              onClick={() => setOrderType('ซื้อกลับบ้าน')}
-              className={`py-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${
-                orderType === 'ซื้อกลับบ้าน'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              🛍️ ซื้อกลับบ้าน
-            </button>
-          </div>
-
-          {/* ช่องกรอกชื่อ/เบอร์โทร (จะแสดงเมื่อเลือก ซื้อกลับบ้าน) */}
+          {/* ช่องกรอกชื่อ/เบอร์โทร (แสดงเฉพาะเมื่อเลือก ซื้อกลับบ้าน) */}
           {orderType === 'ซื้อกลับบ้าน' && (
             <div className="w-full animate-fade-in">
               <input
@@ -209,22 +210,22 @@ function MenuContent() {
                 placeholder="👤 ระบุชื่อ หรือ เบอร์โทรศัพท์ลูกค้า (จำเป็น)*"
                 value={customerContact}
                 onChange={(e) => setCustomerContact(e.target.value)}
-                className="w-full px-4 py-2 bg-amber-50/80 border-2 border-amber-300 rounded-xl text-xs font-bold text-slate-800 placeholder-amber-700/60 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full px-3 py-1.5 bg-amber-50/90 border border-amber-300 rounded-lg text-xs font-bold text-slate-800 placeholder-amber-700/60 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
           )}
         </div>
 
-        {/* แถบหมวดหมู่อาหาร (ล็อก Sticky ค้างไว้ใต้ Header) */}
-        <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 p-3 overflow-x-auto flex gap-2 no-scrollbar">
-          <div className="max-w-3xl mx-auto flex gap-2 w-full">
+        {/* แถบหมวดหมู่อาหาร สไตล์มินิมอล ไม่กินพื้นที่ */}
+        <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 px-3 py-1.5 overflow-x-auto flex gap-1.5 no-scrollbar">
+          <div className="max-w-3xl mx-auto flex gap-1.5 w-full">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition ${
                   selectedCategory === cat
-                    ? 'bg-blue-600 text-white shadow-md'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                 }`}
               >
@@ -237,39 +238,39 @@ function MenuContent() {
 
       {/* แจ้งเตือนสั่งสำเร็จ */}
       {orderSuccess && (
-        <div className="max-w-xl mx-auto p-4 m-4 bg-emerald-500 text-white text-center font-bold rounded-2xl shadow-lg animate-bounce text-sm">
+        <div className="max-w-xl mx-auto p-3 m-3 bg-emerald-500 text-white text-center font-bold rounded-xl shadow-md animate-bounce text-xs">
           🎉 สั่งอาหารเรียบร้อยแล้ว! ห้องครัวกำลังจัดเตรียมอาหารให้ครับ
         </div>
       )}
 
       {/* รายการอาหาร */}
-      <div className="max-w-3xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="max-w-3xl mx-auto p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredItems.map((item) => (
           <div
             key={item.id}
             onClick={() => handleOpenModal(item)}
-            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex gap-4 cursor-pointer hover:border-blue-400 active:scale-[0.99] transition"
+            className="bg-white rounded-2xl p-3 shadow-xs border border-slate-200 flex gap-3 cursor-pointer hover:border-blue-400 active:scale-[0.99] transition"
           >
             {item.imageUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={item.imageUrl}
                 alt={item.name}
-                className="w-24 h-24 object-cover rounded-xl flex-shrink-0"
+                className="w-20 h-20 object-cover rounded-xl flex-shrink-0"
               />
             ) : (
-              <div className="w-24 h-24 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 font-bold text-sm flex-shrink-0">
+              <div className="w-20 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 font-bold text-xs flex-shrink-0">
                 Food
               </div>
             )}
             <div className="flex-1 flex flex-col justify-between">
               <div>
-                <h3 className="font-bold text-slate-800 text-base">{item.name}</h3>
-                <p className="text-xs text-slate-400 mt-1">แตะเพื่อระบุโน้ต/สั่งซื้อ</p>
+                <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">แตะเพื่อระบุโน้ต/สั่งซื้อ</p>
               </div>
-              <div className="flex justify-between items-end mt-2">
-                <span className="text-blue-600 font-black text-lg">฿{item.price}</span>
-                <span className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm">
+              <div className="flex justify-between items-end mt-1">
+                <span className="text-blue-600 font-black text-base">฿{item.price}</span>
+                <span className="bg-slate-900 text-white text-xs font-bold px-2.5 py-1 rounded-lg shadow-xs">
                   + สั่งซื้อ
                 </span>
               </div>
@@ -281,12 +282,12 @@ function MenuContent() {
       {/* ================= Pop-up / Modal ระบุโน้ตอาหาร ================= */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             {/* หัวข้อ Modal */}
             <div className="flex justify-between items-start border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-xl font-black text-slate-900">{selectedItem.name}</h3>
-                <p className="text-blue-600 font-black text-lg">฿{selectedItem.price}</p>
+                <h3 className="text-lg font-black text-slate-900">{selectedItem.name}</h3>
+                <p className="text-blue-600 font-black text-base">฿{selectedItem.price}</p>
               </div>
               <button
                 onClick={handleCloseModal}
@@ -303,29 +304,29 @@ function MenuContent() {
               </label>
               <input
                 type="text"
-                placeholder="เช่น ไม่เผ็ด, ไม่ใสผัก, ขอรสหวาน, เผ็ดน้อย"
+                placeholder="เช่น ไม่เผ็ด, ไม่ใส่ผัก, ขอรสหวาน"
                 value={modalNote}
                 onChange={(e) => setModalNote(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* ปรับจำนวน */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-sm font-bold text-slate-700">จำนวน</span>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs font-bold text-slate-700">จำนวน</span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setModalQuantity((q) => Math.max(1, q - 1))}
-                  className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-lg"
+                  className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base"
                 >
                   -
                 </button>
-                <span className="font-black text-lg text-slate-900 w-6 text-center">
+                <span className="font-black text-base text-slate-900 w-5 text-center">
                   {modalQuantity}
                 </span>
                 <button
                   onClick={() => setModalQuantity((q) => q + 1)}
-                  className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-lg"
+                  className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base"
                 >
                   +
                 </button>
@@ -335,7 +336,7 @@ function MenuContent() {
             {/* ปุ่มยืนยันใส่ตะกร้า */}
             <button
               onClick={handleAddToCartFromModal}
-              className="w-full bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold py-3.5 rounded-2xl shadow-lg transition text-sm flex justify-between px-6"
+              className="w-full bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold py-3 rounded-xl shadow-md transition text-xs flex justify-between px-5"
             >
               <span>ใส่ตะกร้า</span>
               <span>฿{selectedItem.price * modalQuantity}</span>
@@ -346,36 +347,36 @@ function MenuContent() {
 
       {/* ตะกร้าสินค้า Floating ด้านล่าง */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-2xl z-40">
-          <div className="max-w-3xl mx-auto space-y-3">
-            <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 shadow-2xl z-40">
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
               {cart.map((item) => (
                 <div
                   key={item.cartItemId}
-                  className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs"
+                  className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100 text-xs"
                 >
                   <div>
                     <span className="font-bold text-slate-800">{item.name}</span>
                     {item.note && (
-                      <span className="text-amber-600 font-medium block text-[11px] mt-0.5">
+                      <span className="text-amber-600 font-medium block text-[10px]">
                         📝 {item.note}
                       </span>
                     )}
-                    <span className="text-slate-500 mt-0.5 block">
+                    <span className="text-slate-500 block text-[10px]">
                       ฿{item.price} x {item.quantity}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => updateCartQuantity(item.cartItemId, -1)}
-                      className="w-6 h-6 bg-slate-200 rounded-lg font-bold text-slate-700"
+                      className="w-5 h-5 bg-slate-200 rounded-md font-bold text-slate-700 text-xs"
                     >
                       -
                     </button>
-                    <span className="font-bold text-slate-800">{item.quantity}</span>
+                    <span className="font-bold text-slate-800 text-xs">{item.quantity}</span>
                     <button
                       onClick={() => updateCartQuantity(item.cartItemId, 1)}
-                      className="w-6 h-6 bg-slate-200 rounded-lg font-bold text-slate-700"
+                      className="w-5 h-5 bg-slate-200 rounded-md font-bold text-slate-700 text-xs"
                     >
                       +
                     </button>
@@ -386,19 +387,19 @@ function MenuContent() {
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
               <div>
-                <p className="text-xs text-slate-500">ราคารวม ({orderType})</p>
-                <p className="text-xl font-black text-blue-600">฿{totalPrice}</p>
+                <p className="text-[10px] text-slate-500">ราคารวม ({orderType})</p>
+                <p className="text-lg font-black text-blue-600">฿{totalPrice}</p>
               </div>
               <button
                 onClick={handleSendOrder}
                 disabled={isSubmitting}
-                className={`font-black px-6 py-3 rounded-xl shadow-md transition text-sm text-white disabled:opacity-50 ${
+                className={`font-black px-5 py-2.5 rounded-xl shadow-md transition text-xs text-white disabled:opacity-50 ${
                   orderType === 'ซื้อกลับบ้าน'
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {isSubmitting ? 'กำลังส่งออเดอร์...' : '🚀 ยืนยันสั่งอาหาร'}
+                {isSubmitting ? 'กำลังส่ง...' : '🚀 ยืนยันสั่งอาหาร'}
               </button>
             </div>
           </div>
