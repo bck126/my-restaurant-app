@@ -93,7 +93,7 @@ export default function AdminMenu() {
       const menuData = {
         name,
         price: Number(price),
-        category: category || 'ทั่วไป',
+        category: category.trim() || 'ทั่วไป',
         imageUrl: finalImageUrl || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food',
         updatedAt: serverTimestamp(),
       };
@@ -153,6 +153,19 @@ export default function AdminMenu() {
     setImagePreview(null);
   };
 
+  // จัดกลุ่มเมนูแยกตามหมวดหมู่
+  const groupedMenuItems = menuItems.reduce((acc, item) => {
+    const cat = item.category?.trim() || 'ทั่วไป';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
+    return acc;
+  }, {} as Record<string, MenuItem[]>);
+
+  // เรียงหมวดหมู่ตามลำดับตัวอักษรไทย
+  const sortedCategories = Object.keys(groupedMenuItems).sort((a, b) =>
+    a.localeCompare(b, 'th')
+  );
+
   return (
     <main className="min-h-screen bg-slate-100 p-4 pb-20 text-slate-800 max-w-2xl mx-auto">
       {/* Header */}
@@ -163,14 +176,14 @@ export default function AdminMenu() {
         </div>
         <a 
           href="/" 
-          className="text-xs font-bold bg-white border border-slate-200 px-3 py-2 rounded-xl text-slate-600 shadow-sm"
+          className="text-xs font-bold bg-white border border-slate-200 px-3 py-2 rounded-xl text-slate-600 shadow-xs hover:bg-slate-50 transition"
         >
           🏠 หน้าบ้าน
         </a>
       </div>
 
       {/* ฟอร์ม เพิ่ม/แก้ไข เมนู */}
-      <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mb-6">
+      <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs mb-6">
         <h2 className="font-bold text-base text-slate-800 mb-4 flex items-center gap-2">
           {editingId ? '✏️ แก้ไขรายการเมนู' : '➕ เพิ่มเมนูใหม่'}
         </h2>
@@ -238,7 +251,7 @@ export default function AdminMenu() {
               <button
                 type="button"
                 onClick={resetForm}
-                className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm"
+                className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition"
               >
                 ยกเลิก
               </button>
@@ -246,7 +259,7 @@ export default function AdminMenu() {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-3 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition disabled:opacity-50 cursor-pointer"
+              className="flex-1 py-3 bg-emerald-600 active:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition disabled:opacity-50 cursor-pointer hover:bg-emerald-700"
             >
               {loading ? 'กำลังอัปโหลดรูปและบันทึก...' : editingId ? '💾 บันทึกการแก้ไข' : '✨ เพิ่มเมนู'}
             </button>
@@ -254,50 +267,74 @@ export default function AdminMenu() {
         </form>
       </section>
 
-      {/* รายการเมนูทั้งหมด */}
-      <section className="space-y-3">
+      {/* รายการเมนูทั้งหมด แสดงผลแบบจัดหมวดหมู่อัตโนมัติ */}
+      <section className="space-y-6">
         <h2 className="font-bold text-slate-700 text-base px-1">
-          รายการเมนูในระบบทั้งหมด ({menuItems.length})
+          รายการเมนูในระบบทั้งหมด ({menuItems.length} รายการ)
         </h2>
 
-        {menuItems.map((item) => (
-          <div 
-            key={item.id}
-            className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <img 
-                src={item.imageUrl || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food'} 
-                alt={item.name} 
-                className="w-14 h-14 rounded-xl object-cover border border-slate-100 bg-slate-50"
-              />
-              <div>
-                <div className="font-bold text-slate-900 text-base">{item.name}</div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-emerald-600 font-bold text-sm">{item.price} บาท</span>
-                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-medium">
-                    {item.category || 'ทั่วไป'}
-                  </span>
-                </div>
+        {sortedCategories.map((catName) => {
+          // เรียงชื่อรายการอาหารภายในหมวดหมู่นั้นๆ ตามตัวอักษรไทย
+          const sortedItems = [...groupedMenuItems[catName]].sort((a, b) =>
+            a.name.localeCompare(b.name, 'th')
+          );
+
+          return (
+            <div key={catName} className="space-y-2.5">
+              {/* แถบหัวข้อหมวดหมู่ */}
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1 px-1">
+                <span className="bg-slate-800 text-white font-black text-xs px-2.5 py-1 rounded-lg">
+                  📂 {catName}
+                </span>
+                <span className="text-xs text-slate-500 font-bold">
+                  {sortedItems.length} รายการ
+                </span>
+              </div>
+
+              {/* วนลูปแสดงเมนูในหมวดนี้ */}
+              <div className="space-y-2">
+                {sortedItems.map((item) => (
+                  <div 
+                    key={item.id}
+                    className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={item.imageUrl || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food'} 
+                        alt={item.name} 
+                        className="w-14 h-14 rounded-xl object-cover border border-slate-100 bg-slate-50"
+                      />
+                      <div>
+                        <div className="font-bold text-slate-900 text-base">{item.name}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-emerald-600 font-bold text-sm">{item.price} บาท</span>
+                          <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-medium">
+                            {item.category || 'ทั่วไป'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEdit(item)}
+                        className="px-3 py-1.5 bg-amber-50 text-amber-700 font-bold rounded-xl text-xs border border-amber-200 active:bg-amber-100 hover:bg-amber-100 transition"
+                      >
+                        ✏️ แก้ไข
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id, item.name)}
+                        className="px-3 py-1.5 bg-red-50 text-red-600 font-bold rounded-xl text-xs border border-red-200 active:bg-red-100 hover:bg-red-100 transition"
+                      >
+                        🗑️ ลบ
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleEdit(item)}
-                className="px-3 py-1.5 bg-amber-50 text-amber-700 font-bold rounded-xl text-xs border border-amber-200 active:bg-amber-100"
-              >
-                ✏️ แก้ไข
-              </button>
-              <button
-                onClick={() => handleDelete(item.id, item.name)}
-                className="px-3 py-1.5 bg-red-50 text-red-600 font-bold rounded-xl text-xs border border-red-200 active:bg-red-100"
-              >
-                🗑️ ลบ
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {menuItems.length === 0 && (
           <p className="text-center py-10 text-slate-400">ยังไม่มีรายการเมนูในระบบ</p>
