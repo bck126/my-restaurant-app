@@ -14,9 +14,8 @@ interface MenuItem {
 }
 
 interface CartItem extends MenuItem {
-  cartItemId: string; // ID สำหรับแยกรายการกรณีสั่งเมนูเดียวกันแต่คนละเงื่อนไข
+  cartItemId: string;
   quantity: number;
-  orderType: 'ทานที่ร้าน' | 'กลับบ้าน';
   note: string;
 }
 
@@ -30,10 +29,13 @@ function MenuContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
+  // สถานะการสั่งทานที่ร้าน / ซื้อกลับบ้าน
+  const [orderType, setOrderType] = useState<'ทานที่ร้าน' | 'ซื้อกลับบ้าน'>('ทานที่ร้าน');
+  const [customerContact, setCustomerContact] = useState<string>(''); // ชื่อหรือเบอร์โทร
+
   // State สำหรับ Modal ป๊อปอัปเลือกเมนู
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [modalQuantity, setModalQuantity] = useState<number>(1);
-  const [modalOrderType, setModalOrderType] = useState<'ทานที่ร้าน' | 'กลับบ้าน'>('ทานที่ร้าน');
   const [modalNote, setModalNote] = useState<string>('');
 
   // ดึงข้อมูลเมนูอาหารจาก Firebase
@@ -52,7 +54,6 @@ function MenuContent() {
   const handleOpenModal = (item: MenuItem) => {
     setSelectedItem(item);
     setModalQuantity(1);
-    setModalOrderType('ทานที่ร้าน');
     setModalNote('');
   };
 
@@ -65,7 +66,7 @@ function MenuContent() {
   const handleAddToCartFromModal = () => {
     if (!selectedItem) return;
 
-    const cartItemId = `${selectedItem.id}-${modalOrderType}-${modalNote.trim()}`;
+    const cartItemId = `${selectedItem.id}-${modalNote.trim()}`;
 
     setCart((prevCart) => {
       const existingIndex = prevCart.findIndex((item) => item.cartItemId === cartItemId);
@@ -81,7 +82,6 @@ function MenuContent() {
             ...selectedItem,
             cartItemId,
             quantity: modalQuantity,
-            orderType: modalOrderType,
             note: modalNote.trim(),
           },
         ];
@@ -112,16 +112,24 @@ function MenuContent() {
   // ส่งออเดอร์เข้า Firestore
   const handleSendOrder = async () => {
     if (cart.length === 0) return;
+
+    // ตรวจสอบเงื่อนไขถ้าเลือกซื้อกลับบ้าน ต้องระบุชื่อ/เบอร์โทร
+    if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
+      alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'orders'), {
         table: tableParam,
+        orderType: orderType,
+        customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
         items: cart.map((item) => ({
           id: item.id,
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          orderType: item.orderType,
           note: item.note,
         })),
         totalPrice,
@@ -130,6 +138,7 @@ function MenuContent() {
       });
 
       setCart([]);
+      setCustomerContact('');
       setOrderSuccess(true);
       setTimeout(() => setOrderSuccess(false), 4000);
     } catch (error) {
@@ -148,31 +157,69 @@ function MenuContent() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32">
-      {/* Header */}
+      {/* Header ส่วนบน 3 แถวหลัก */}
       <header className="bg-white sticky top-0 z-10 shadow-sm border-b border-slate-200 p-4">
-        <div className="max-w-3xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
+        <div className="max-w-xl mx-auto flex flex-col items-center gap-3">
+          {/* แถวที่ 1: โลโก้ร้าน */}
+          <div className="h-14 flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
-              alt="Logo"
-              className="h-10 object-contain"
+              alt="โลโก้ ส้มตำ ริมเขื่อน"
+              className="max-h-14 object-contain"
               onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
             />
-            <div>
-              <h1 className="font-black text-slate-900 text-lg">ส้มตำ ริมเขื่อน</h1>
-              <p className="text-xs text-slate-500">สั่งอาหารออนไลน์</p>
-            </div>
           </div>
-          <div className="bg-slate-900 text-white font-black px-4 py-1.5 rounded-full text-sm shadow-sm">
+
+          {/* แถวที่ 2: ชื่อโต๊ะ */}
+          <div className="bg-slate-900 text-white font-black px-6 py-1.5 rounded-full text-sm shadow-sm tracking-wide">
             โต๊ะ {tableParam}
           </div>
+
+          {/* แถวที่ 3: ปุ่มเลือก ทานที่ร้าน / ซื้อกลับบ้าน */}
+          <div className="w-full grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setOrderType('ทานที่ร้าน')}
+              className={`py-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${
+                orderType === 'ทานที่ร้าน'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              🍽️ ทานที่ร้าน
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrderType('ซื้อกลับบ้าน')}
+              className={`py-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${
+                orderType === 'ซื้อกลับบ้าน'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              🛍️ ซื้อกลับบ้าน
+            </button>
+          </div>
+
+          {/* ช่องกรอกชื่อ/เบอร์โทร (จะแสดงเมื่อเลือก ซื้อกลับบ้าน) */}
+          {orderType === 'ซื้อกลับบ้าน' && (
+            <div className="w-full animate-fade-in pt-1">
+              <input
+                type="text"
+                placeholder="👤 ระบุชื่อ หรือ เบอร์โทรศัพท์ลูกค้า (จำเป็น)*"
+                value={customerContact}
+                onChange={(e) => setCustomerContact(e.target.value)}
+                className="w-full px-4 py-2.5 bg-amber-50/60 border-2 border-amber-300 rounded-xl text-xs font-bold text-slate-800 placeholder-amber-700/60 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+          )}
         </div>
       </header>
 
       {/* แจ้งเตือนสั่งสำเร็จ */}
       {orderSuccess && (
-        <div className="max-w-3xl mx-auto p-4 m-4 bg-emerald-500 text-white text-center font-bold rounded-2xl shadow-lg animate-bounce">
+        <div className="max-w-xl mx-auto p-4 m-4 bg-emerald-500 text-white text-center font-bold rounded-2xl shadow-lg animate-bounce text-sm">
           🎉 สั่งอาหารเรียบร้อยแล้ว! ห้องครัวกำลังจัดเตรียมอาหารให้ครับ
         </div>
       )}
@@ -213,7 +260,7 @@ function MenuContent() {
             <div className="flex-1 flex flex-col justify-between">
               <div>
                 <h3 className="font-bold text-slate-800 text-base">{item.name}</h3>
-                <p className="text-xs text-slate-400 mt-1">แตะเพื่อเลือกรายละเอียด/สั่งซื้อ</p>
+                <p className="text-xs text-slate-400 mt-1">แตะเพื่อระบุโน้ต/สั่งซื้อ</p>
               </div>
               <div className="flex justify-between items-end mt-2">
                 <span className="text-blue-600 font-black text-lg">฿{item.price}</span>
@@ -226,7 +273,7 @@ function MenuContent() {
         ))}
       </div>
 
-      {/* ================= Pop-up / Modal เลือกรายละเอียดอาหาร ================= */}
+      {/* ================= Pop-up / Modal ระบุโน้ตอาหาร ================= */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
           <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
@@ -244,43 +291,14 @@ function MenuContent() {
               </button>
             </div>
 
-            {/* ตัวเลือก: ทานที่ร้าน / กลับบ้าน */}
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-2">รูปแบบการทาน *</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setModalOrderType('ทานที่ร้าน')}
-                  className={`py-3 rounded-xl font-bold text-sm border flex items-center justify-center gap-2 transition ${
-                    modalOrderType === 'ทานที่ร้าน'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  🍽️ ทานที่ร้าน
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModalOrderType('กลับบ้าน')}
-                  className={`py-3 rounded-xl font-bold text-sm border flex items-center justify-center gap-2 transition ${
-                    modalOrderType === 'กลับบ้าน'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-md'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  🛍️ สั่งกลับบ้าน
-                </button>
-              </div>
-            </div>
-
             {/* ช่องกรอกโน้ต */}
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">
-                รายละเอียดเพิ่มเติม / โน้ตกำกับ
+                ✍️ รายละเอียดเพิ่มเติม / โน้ตกำกับ
               </label>
               <input
                 type="text"
-                placeholder="เช่น ไม่เผ็ด, ไม่ใส่ผัก, ขอรสหวาน, เผ็ดน้อย"
+                placeholder="เช่น ไม่เผ็ด, ไม่ใสผัก, ขอรสหวาน, เผ็ดน้อย"
                 value={modalNote}
                 onChange={(e) => setModalNote(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -332,18 +350,7 @@ function MenuContent() {
                   className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs"
                 >
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-800">{item.name}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                          item.orderType === 'กลับบ้าน'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {item.orderType}
-                      </span>
-                    </div>
+                    <span className="font-bold text-slate-800">{item.name}</span>
                     {item.note && (
                       <span className="text-amber-600 font-medium block text-[11px] mt-0.5">
                         📝 {item.note}
@@ -374,13 +381,19 @@ function MenuContent() {
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
               <div>
-                <p className="text-xs text-slate-500">ราคารวมทั้งหมด</p>
+                <p className="text-xs text-slate-500">
+                  ราคารวม ({orderType})
+                </p>
                 <p className="text-xl font-black text-blue-600">฿{totalPrice}</p>
               </div>
               <button
                 onClick={handleSendOrder}
                 disabled={isSubmitting}
-                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black px-6 py-3 rounded-xl shadow-md transition text-sm disabled:opacity-50"
+                className={`font-black px-6 py-3 rounded-xl shadow-md transition text-sm text-white disabled:opacity-50 ${
+                  orderType === 'ซื้อกลับบ้าน'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {isSubmitting ? 'กำลังส่งออเดอร์...' : '🚀 ยืนยันสั่งอาหาร'}
               </button>
