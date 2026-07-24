@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from './firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 
 interface MenuItem {
   id: string;
@@ -17,6 +17,24 @@ interface CartItem extends MenuItem {
   cartItemId: string;
   quantity: number;
   note: string;
+}
+
+interface SubmittedOrderItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  note: string;
+}
+
+interface SubmittedOrder {
+  id: string;
+  table: string;
+  orderType: string;
+  items: SubmittedOrderItem[];
+  totalPrice: number;
+  status: string;
+  createdAt?: any;
 }
 
 function MenuContent() {
@@ -38,7 +56,11 @@ function MenuContent() {
   const [modalQuantity, setModalQuantity] = useState<number>(1);
   const [modalNote, setModalNote] = useState<string>('');
 
-  // ดึงข้อมูลเมนูอาหารจาก Firebase
+  // รายการออเดอร์ที่สั่งเข้าครัวไปแล้ว (Active Orders)
+  const [activeOrders, setActiveOrders] = useState<SubmittedOrder[]>([]);
+  const [showActiveOrdersList, setShowActiveOrdersList] = useState(true);
+
+  // 1. ดึงข้อมูลเมนูอาหารจาก Firebase
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'menu'), (snapshot) => {
       const items: MenuItem[] = snapshot.docs.map((doc) => ({
@@ -49,6 +71,45 @@ function MenuContent() {
     });
     return () => unsub();
   }, []);
+
+  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime)
+  useEffect(() => {
+    // ดึงรหัส Active Order IDs ที่เก็บไว้ใน localStorage
+    const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
+
+    if (savedOrderIds.length === 0) {
+      setActiveOrders([]);
+      return;
+    }
+
+    // ดึงข้อมูล Realtime เฉพาะออเดอร์ของโต๊ะนี้ที่ยังไม่เสร็จ/ยังไม่เช็กบิล
+    const q = query(
+      collection(db, 'orders'),
+      where('table', '==', tableParam)
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const fetchedOrders: SubmittedOrder[] = [];
+      const currentActiveIds: string[] = [];
+
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data() as SubmittedOrder;
+        const orderId = doc.id;
+
+        // รับเฉพาะออเดอร์ที่มีใน localStorage และสถานะไม่ใช่ completed/cancelled
+        if (savedOrderIds.includes(orderId) && data.status !== 'completed' && data.status !== 'cancelled') {
+          fetchedOrders.push({ id: orderId, ...data });
+          currentActiveIds.push(orderId);
+        }
+      });
+
+      // อัปเดต localStorage ให้เหลือเฉพาะรายการที่ยังชำระเงินไม่เสร็จ
+      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(currentActiveIds));
+      setActiveOrders(fetchedOrders);
+    });
+
+    return () => unsub();
+  }, [tableParam]);
 
   // คำนวณจำนวนรวมของเมนูนั้นๆ ในตะกร้า (เผื่อมีหลาย note)
   const getItemQuantityInCart = (itemId: string) => {
@@ -113,18 +174,20 @@ function MenuContent() {
     );
   };
 
-  // ลดจำนวนรวมของเมนูบนการ์ดเมนู (กรณีลบจากตัวการ์ดด่วน)
+  // ลดจำนวนรวมของเมนูบนการ์ดเมนู
   const handleDecreaseItemFromCard = (itemId: string) => {
     const itemsInCart = cart.filter((item) => item.id === itemId);
     if (itemsInCart.length === 0) return;
 
-    // ลดจำนวนรายการสุดท้ายในตะกร้าของเมนูนี้
     const targetCartItemId = itemsInCart[itemsInCart.length - 1].cartItemId;
     updateCartQuantity(targetCartItemId, -1);
   };
 
-  // รวมราคาทั้งหมด
+  // รวมราคาทั้งหมดในตะกร้าปัจจุบัน
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // รวมราคาทั้งหมดที่สั่งเข้าครัวไปแล้ว
+  const totalSubmittedPrice = activeOrders.reduce((sum, order) => sum + (order.totalPrice || 0), 0);
 
   // ส่งออเดอร์เข้า Firestore
   const handleSendOrder = async () => {
@@ -137,7 +200,7 @@ function MenuContent() {
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'orders'), {
+      const docRef = await addDoc(collection(db, 'orders'), {
         table: tableParam,
         orderType: orderType,
         customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
@@ -153,9 +216,15 @@ function MenuContent() {
         createdAt: serverTimestamp(),
       });
 
+      // บันทึก Order ID ลงใน localStorage เพื่อให้ติดตามสถานะการสั่งซื้อได้
+      const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
+      savedOrderIds.push(docRef.id);
+      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(savedOrderIds));
+
       setCart([]);
       setCustomerContact('');
       setOrderSuccess(true);
+      setShowActiveOrdersList(true); // เปิดแสดงรายการออเดอร์ที่สั่งไปแล้ว
       setTimeout(() => setOrderSuccess(false), 4000);
     } catch (error) {
       console.error('Error sending order:', error);
@@ -256,6 +325,67 @@ function MenuContent() {
       {orderSuccess && (
         <div className="max-w-xl mx-auto p-3 m-3 bg-emerald-500 text-white text-center font-bold rounded-xl shadow-md animate-bounce text-xs">
           🎉 สั่งอาหารเรียบร้อยแล้ว! ห้องครัวกำลังจัดเตรียมอาหารให้ครับ
+        </div>
+      )}
+
+      {/* ================= กล่องแสดงรายการที่ส่งเข้าครัวไปแล้ว (Active Orders) ================= */}
+      {activeOrders.length > 0 && (
+        <div className="max-w-3xl mx-auto px-3 pt-3">
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-300/80 rounded-2xl p-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                </span>
+                <h2 className="font-black text-slate-800 text-xs sm:text-sm">
+                  🍳 รายการที่สั่งเข้าครัวแล้ว ({activeOrders.reduce((acc, o) => acc + o.items.reduce((iAcc, item) => iAcc + item.quantity, 0), 0)} รายการ)
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-amber-800 font-black text-xs">
+                  รวม ฿{totalSubmittedPrice}
+                </span>
+                <button
+                  onClick={() => setShowActiveOrdersList(!showActiveOrdersList)}
+                  className="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline"
+                >
+                  {showActiveOrdersList ? 'ซ่อน' : 'ดูรายการ'}
+                </button>
+              </div>
+            </div>
+
+            {showActiveOrdersList && (
+              <div className="mt-2 space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                {activeOrders.map((order, idx) => (
+                  <div key={order.id} className="bg-white/80 backdrop-blur-xs p-2.5 rounded-xl border border-amber-200/60 text-xs">
+                    <div className="flex justify-between items-center mb-1 text-[11px] font-bold text-amber-900 border-b border-slate-100 pb-1">
+                      <span>สั่งรอบที่ {idx + 1} ({order.orderType})</span>
+                      <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px]">
+                        {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : '🔥 กำลังปรุงอาหาร'}
+                      </span>
+                    </div>
+                    <ul className="space-y-1">
+                      {order.items.map((item, itemIdx) => (
+                        <li key={itemIdx} className="flex justify-between text-slate-700">
+                          <div>
+                            <span className="font-bold">{item.name}</span>
+                            <span className="text-slate-500 font-medium"> x{item.quantity}</span>
+                            {item.note && (
+                              <span className="text-amber-700 font-normal text-[10px] block">
+                                📝 {item.note}
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-bold text-slate-900">฿{item.price * item.quantity}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -466,7 +596,7 @@ function MenuContent() {
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
               <div>
-                <p className="text-[10px] text-slate-500">ราคารวม ({orderType})</p>
+                <p className="text-[10px] text-slate-500">ราคารวมรอบนี้ ({orderType})</p>
                 <p className="text-lg font-black text-blue-600">฿{totalPrice}</p>
               </div>
               <button
@@ -478,7 +608,7 @@ function MenuContent() {
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {isSubmitting ? 'กำลังส่ง...' : '🚀 ยืนยันสั่งอาหาร'}
+                {isSubmitting ? 'กำลังส่ง...' : '🚀 ยืนยันสั่งอาหารเพิ่ม'}
               </button>
             </div>
           </div>
