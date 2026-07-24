@@ -1,127 +1,310 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { db } from './firebase'; // ปรับ path ให้ตรงกับโครงสร้างโปรเจกต์ของคุณ
+import { collection, onSnapshot, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
 interface OrderItem {
   id: string;
   name: string;
+  price: number;
   quantity: number;
   note?: string;
 }
 
 interface Order {
   id: string;
-  orderType?: 'dine-in' | 'takeaway';
-  tableNo: string;
-  customerName?: string;
+  table: string;
+  orderType: string;
+  customerContact?: string;
   items: OrderItem[];
   totalPrice: number;
-  status: 'pending' | 'cooking' | 'served' | 'completed' | 'cancelled';
-  createdAt: any;
+  status: 'pending' | 'cooking' | 'completed' | 'cancelled';
+  createdAt?: any;
 }
 
-export default function KitchenPage() {
+function KitchenContent() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const isInitialLoad = useRef<boolean>(true);
 
+  // ฟังก์ชันเล่นเสียงเตือน (ใช้ Web Audio API โดยไม่ต้องมีไฟล์ MP3)
+  const playAlertSound = () => {
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioCtxRef.current = new AudioContextClass();
+      }
+
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      // เล่นเสียง Beep 2 ครั้ง (ปิ๊ป-ปิ๊ป)
+      const playBeep = (delay: number, frequency: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frequency, ctx.currentTime + delay);
+
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.3);
+      };
+
+      playBeep(0, 880);   // เสียงสูงครั้งที่ 1
+      playBeep(0.2, 1046.5); // เสียงสูงครั้งที่ 2
+    } catch (e) {
+      console.error('ไม่สามารถเล่นเสียงได้:', e);
+    }
+  };
+
+  // ฟังก์ชันเปิดใช้งานระบบเสียงจากผู้ใช้
+  const enableSound = () => {
+    if (!audioCtxRef.current) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioCtxRef.current = new AudioContextClass();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    setSoundEnabled(true);
+    playAlertSound(); // เล่นเสียงทดสอบ 1 ครั้ง
+  };
+
+  // ดึงข้อมูล Realtime จาก Firestore
   useEffect(() => {
-    const q = query(collection(db, 'orders'));
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orderList: Order[] = [];
-      snapshot.forEach((doc) => {
-        orderList.push({ id: doc.id, ...doc.data() } as Order);
-      });
-      // กรองเฉพาะออเดอร์ที่ยังทำไม่เสร็จ
-      setOrders(orderList.filter(o => o.status === 'pending' || o.status === 'cooking'));
+      const fetchedOrders: Order[] = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as Order[];
+
+      // ตรวจสอบว่ามีออเดอร์ใหม่เข้ามาหลังจากโหลดครั้งแรกหรือไม่
+      if (!isInitialLoad.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const newOrderData = change.doc.data() as Order;
+            // แจ้งเตือนเฉพาะออเดอร์ที่ยังมีสถานะ pending
+            if (newOrderData.status === 'pending') {
+              playAlertSound();
+            }
+          }
+        });
+      } else {
+        isInitialLoad.current = false;
+      }
+
+      setOrders(fetchedOrders);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const updateStatus = async (orderId: string, newStatus: string) => {
+  // อัปเดตสถานะออเดอร์
+  const handleUpdateStatus = async (orderId: string, newStatus: Order['status']) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { status: newStatus });
     } catch (error) {
-      console.error('Update status error:', error);
+      console.error('Error updating order status:', error);
+      alert('ไม่สามารถอัปเดตสถานะออเดอร์ได้');
     }
   };
 
+  // แยกรายการออเดอร์ที่ต้องทำในครัว (Pending & Cooking) และที่เสร็จแล้ว
+  const activeOrders = orders.filter((o) => o.status === 'pending' || o.status === 'cooking');
+  const finishedOrders = orders.filter((o) => o.status === 'completed' || o.status === 'cancelled').slice(0, 5);
+
   return (
-    <main className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
-        <div>
-          <h1 className="text-2xl font-black text-amber-400">👨‍🍳 จอแสดงรายการอาหาร (ห้องครัว)</h1>
-          <p className="text-xs text-slate-400">รายการอาหารที่ต้องทำเสิร์ฟ</p>
+    <main className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-6">
+      {/* Header */}
+      <header className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-4 h-4 rounded-full bg-emerald-500 animate-pulse" />
+          <h1 className="text-2xl md:text-3xl font-black text-white">👨‍🍳 จอแสดงรายการอาหารห้องครัว</h1>
         </div>
-        <div className="bg-slate-800 px-4 py-2 rounded-xl text-sm font-bold text-slate-300">
-          คิวทั้งหมด: {orders.length} ออเดอร์
+
+        {/* แถบสถานะระบบเสียงเตือน */}
+        <div className="flex items-center gap-3">
+          {!soundEnabled ? (
+            <button
+              onClick={enableSound}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-4 py-2 rounded-xl text-xs md:text-sm shadow-lg animate-bounce flex items-center gap-2"
+            >
+              🔔 คลิกเปิดระบบเสียงแจ้งเตือน
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl">
+              <span className="text-emerald-400 text-xs font-bold">🔊 ระบบเสียงเปิดใช้งานแล้ว</span>
+              <button
+                onClick={playAlertSound}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-bold px-2 py-1 rounded-lg"
+              >
+                ทดสอบเสียง
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* สรุปยอดออเดอร์ค้างทำ */}
+      <div className="max-w-7xl mx-auto mb-6 flex gap-4">
+        <div className="bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 rounded-xl flex items-center gap-3">
+          <span className="text-2xl font-black text-amber-400">
+            {orders.filter((o) => o.status === 'pending').length}
+          </span>
+          <span className="text-xs text-amber-200 font-bold">รอดำเนินการ (Pending)</span>
+        </div>
+        <div className="bg-blue-500/10 border border-blue-500/30 px-4 py-2.5 rounded-xl flex items-center gap-3">
+          <span className="text-2xl font-black text-blue-400">
+            {orders.filter((o) => o.status === 'cooking').length}
+          </span>
+          <span className="text-xs text-blue-200 font-bold">กำลังปรุง (Cooking)</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {orders.map((order) => {
-          const isTakeaway = order.orderType === 'takeaway';
-          return (
-            <div 
-              key={order.id} 
-              className={`p-5 rounded-2xl border-2 bg-slate-800 shadow-lg flex flex-col justify-between ${
-                isTakeaway ? 'border-purple-500' : 'border-amber-500'
-              }`}
-            >
-              <div>
-                {/* Header บอกประเภทออเดอร์ */}
-                <div className="flex justify-between items-start border-b border-slate-700 pb-3 mb-3">
-                  <div>
-                    <span className={`inline-block text-xs font-black px-2.5 py-1 rounded-lg mb-1 ${
-                      isTakeaway ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    }`}>
-                      {isTakeaway ? '🛍️ ใส่ถุง (กลับบ้าน)' : '🪑 ใส่จาน (ทานที่ร้าน)'}
-                    </span>
-                    <h2 className="text-xl font-black text-white">
-                      {isTakeaway ? `ลูกค้า: ${order.customerName || 'ไม่ระบุชื่อ'}` : `โต๊ะ ${order.tableNo}`}
-                    </h2>
-                  </div>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'เมื่อสักครู่'}
-                  </span>
-                </div>
+      {/* Grid รายการออเดอร์ */}
+      <div className="max-w-7xl mx-auto">
+        {activeOrders.length === 0 ? (
+          <div className="text-center py-20 bg-slate-800/40 rounded-3xl border border-dashed border-slate-800">
+            <p className="text-4xl mb-2">✨</p>
+            <p className="text-slate-400 font-bold text-lg">ไม่มีรายการออเดอร์ค้างทำในขณะนี้</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activeOrders.map((order) => {
+              const isPending = order.status === 'pending';
 
-                {/* รายการเมนูที่ต้องทำ */}
-                <div className="space-y-2 mb-4">
-                  {order.items?.map((item, idx) => (
-                    <div key={idx} className="bg-slate-900/60 p-2.5 rounded-xl flex justify-between items-center border border-slate-700/50">
-                      <div>
-                        <span className="font-bold text-base text-slate-100">{item.name}</span>
-                        {item.note && <p className="text-xs text-amber-400">*( {item.note} )</p>}
+              return (
+                <div
+                  key={order.id}
+                  className={`bg-slate-800 rounded-2xl border transition-all shadow-xl overflow-hidden flex flex-col justify-between ${
+                    isPending
+                      ? 'border-amber-500 ring-2 ring-amber-500/50 animate-pulse'
+                      : 'border-blue-500/50'
+                  }`}
+                >
+                  {/* หัวการ์ดออเดอร์ */}
+                  <div>
+                    <div
+                      className={`p-3.5 flex justify-between items-center ${
+                        isPending ? 'bg-amber-500 text-slate-950' : 'bg-blue-600 text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-lg">โต๊ะ {order.table}</span>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-black/20">
+                          {order.orderType}
+                        </span>
                       </div>
-                      <span className="text-xl font-black text-amber-400 bg-amber-400/10 px-3 py-1 rounded-lg">
-                        x{item.quantity}
+                      <span className="text-xs font-extrabold uppercase tracking-wider">
+                        {isPending ? '🚨 ออเดอร์ใหม่!' : '🔥 กำลังทำ'}
                       </span>
                     </div>
-                  ))}
+
+                    {/* รายละเอียดลูกค้า (กรณีซื้อกลับบ้าน) */}
+                    {order.customerContact && (
+                      <div className="bg-slate-900/80 px-3.5 py-1.5 border-b border-slate-700/50 text-xs text-amber-300 font-bold">
+                        👤 ลูกค้า: {order.customerContact}
+                      </div>
+                    )}
+
+                    {/* รายการอาหาร */}
+                    <div className="p-4 space-y-3">
+                      {order.items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex justify-between items-start border-b border-slate-700/40 pb-2.5 last:border-0 last:pb-0"
+                        >
+                          <div>
+                            <p className="font-bold text-base text-slate-100">{item.name}</p>
+                            {item.note && (
+                              <p className="text-amber-400 text-xs font-semibold mt-0.5">
+                                📝 {item.note}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-lg font-black text-amber-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
+                            x{item.quantity}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ปุ่มเปลี่ยนสถานะ */}
+                  <div className="p-3.5 bg-slate-900/60 border-t border-slate-700/60 flex gap-2">
+                    {isPending ? (
+                      <button
+                        onClick={() => handleUpdateStatus(order.id, 'cooking')}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 rounded-xl shadow-lg transition text-sm"
+                      >
+                        👨‍🍳 เริ่มปรุงอาหาร
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleUpdateStatus(order.id, 'completed')}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl shadow-lg transition text-sm"
+                      >
+                        ✅ ทำเสร็จแล้ว (ส่งเสิร์ฟ)
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm('คุณต้องการยกเลิกออเดอร์นี้ใช่หรือไม่?')) {
+                          handleUpdateStatus(order.id, 'cancelled');
+                        }
+                      }}
+                      className="bg-slate-800 hover:bg-rose-900/40 text-rose-400 hover:text-rose-300 border border-rose-800/40 font-bold px-3 py-2.5 rounded-xl text-xs transition"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              {/* ปุ่มเปลี่ยนสถานะ */}
-              <div className="pt-2 border-t border-slate-700/50 flex gap-2">
-                <button
-                  onClick={() => updateStatus(order.id, 'served')}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold rounded-xl text-sm transition shadow-md"
-                >
-                  ✅ ทำเสร็จแล้ว / พร้อมเสิร์ฟ
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {orders.length === 0 && (
-          <div className="col-span-full text-center py-20 text-slate-500 font-bold">
-            ยังไม่มีรายการอาหารที่ต้องทำในขณะนี้ ☕
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* ประวัติออเดอร์ที่เสร็จแล้ว (แสดง 5 รายการล่าสุด) */}
+      {finishedOrders.length > 0 && (
+        <section className="max-w-7xl mx-auto mt-12 border-t border-slate-800 pt-6 opacity-60 hover:opacity-100 transition">
+          <h2 className="text-sm font-bold text-slate-400 mb-3">🕒 รายการที่ทำเสร็จล่าสุด</h2>
+          <div className="flex flex-wrap gap-2">
+            {finishedOrders.map((o) => (
+              <div
+                key={o.id}
+                className="bg-slate-800/60 border border-slate-700/50 px-3 py-1.5 rounded-lg text-xs flex items-center gap-2"
+              >
+                <span className="font-bold text-slate-300">โต๊ะ {o.table}</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-slate-400">{o.items.length} รายการ</span>
+                <span className="text-emerald-400 font-bold">✓</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
+  );
+}
+
+export default function KitchenPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-400 bg-slate-900 min-h-screen">กำลังโหลดข้อมูลห้องครัว...</div>}>
+      <KitchenContent />
+    </Suspense>
   );
 }
