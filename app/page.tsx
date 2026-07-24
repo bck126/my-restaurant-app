@@ -156,10 +156,10 @@ function MenuContent() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-32">
-      {/* Header + หมวดหมู่ แบบกะทัดรัด Sticky ด้านบน */}
+      {/* Header + หมวดหมู่ แบบ Sticky ด้านบน */}
       <header className="bg-white sticky top-0 z-30 shadow-sm border-b border-slate-200">
         <div className="max-w-xl mx-auto px-3 py-2 flex flex-col gap-2">
-          {/* แถวหลักแบบกะทัดรัด: โลโก้ + โต๊ะ + ปุ่มเลือกทานที่ร้าน/กลับบ้าน */}
+          {/* แถวหลัก: โลโก้ (ขยายขนาดขึ้น) + โต๊ะ + ปุ่มเลือกทานที่ร้าน/กลับบ้าน */}
           <div className="flex items-center justify-between gap-2">
             {/* โลโก้ + โต๊ะ */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -167,7 +167,7 @@ function MenuContent() {
               <img
                 src="/logo.png"
                 alt="โลโก้ ส้มตำ ริมเขื่อน"
-                className="h-10 w-auto object-contain drop-shadow-sm"
+                className="h-14 w-auto object-contain drop-shadow-md"
                 onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
               />
               <span className="bg-slate-900 text-white font-black text-xs px-2.5 py-1 rounded-lg shadow-xs whitespace-nowrap">
