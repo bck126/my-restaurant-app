@@ -16,34 +16,34 @@ interface MenuItem {
   price: number;
   category: string;
   imageUrl?: string;
-  order?: number; // รองรับการกำหนดลำดับการแสดงผล
+  order?: number;
 }
 
 export const MenuManagement: React.FC = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('ทั้งหมด');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Form State
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [name, setName] = useState<string>('');
+  const [price, setPrice] = useState<string>('');
+  const [category, setCategory] = useState<string>('');
+  const [imageUrl, setImageUrl] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Fetch Items from Firestore
-  const fetchMenuItems = async () => {
+  const fetchMenuItems = async (): Promise<void> => {
     try {
       setLoading(true);
       const querySnapshot = await getDocs(collection(db, 'menuItems'));
-      const items: MenuItem[] = [];
-      querySnapshot.forEach((docSnapshot) => {
-        items.push({ id: docSnapshot.id, ...docSnapshot.data() } as MenuItem);
-      });
+      const items: MenuItem[] = querySnapshot.docs.map((docItem) => ({
+        id: docItem.id,
+        ...(docItem.data() as Omit<MenuItem, 'id'>),
+      }));
       setMenuItems(items);
-    } catch (error) {
-      console.error('Error fetching menu items:', error);
+    } catch (err: unknown) {
+      console.error('Error fetching menu items:', err);
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export const MenuManagement: React.FC = () => {
   }, []);
 
   // Add or Update Item
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (!name || !price) return;
 
@@ -78,14 +78,14 @@ export const MenuManagement: React.FC = () => {
       setPrice('');
       setCategory('');
       setImageUrl('');
-      fetchMenuItems();
-    } catch (error) {
-      console.error('Error saving menu item:', error);
+      await fetchMenuItems();
+    } catch (err: unknown) {
+      console.error('Error saving menu item:', err);
     }
   };
 
   // Start Edit
-  const handleEdit = (item: MenuItem) => {
+  const handleEdit = (item: MenuItem): void => {
     setEditingId(item.id);
     setName(item.name);
     setPrice(item.price.toString());
@@ -94,7 +94,7 @@ export const MenuManagement: React.FC = () => {
   };
 
   // Cancel Edit
-  const handleCancelEdit = () => {
+  const handleCancelEdit = (): void => {
     setEditingId(null);
     setName('');
     setPrice('');
@@ -103,13 +103,13 @@ export const MenuManagement: React.FC = () => {
   };
 
   // Delete Item
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string): Promise<void> => {
     if (window.confirm('คุณต้องการลบรายการนี้ใช่หรือไม่?')) {
       try {
         await deleteDoc(doc(db, 'menuItems', id));
-        fetchMenuItems();
-      } catch (error) {
-        console.error('Error deleting menu item:', error);
+        await fetchMenuItems();
+      } catch (err: unknown) {
+        console.error('Error deleting menu item:', err);
       }
     }
   };
@@ -124,12 +124,10 @@ export const MenuManagement: React.FC = () => {
   // 2. กรองและจัดเรียงรายการอาหาร
   const filteredItems = menuItems
     .filter((item) => {
-      // กรองตามหมวดหมู่
       const matchesCategory =
         selectedCategory === 'ทั้งหมด' ||
         (item.category || 'ทั่วไป') === selectedCategory;
 
-      // กรองตามคำค้นหา
       const matchesSearch = item.name
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
@@ -137,11 +135,9 @@ export const MenuManagement: React.FC = () => {
       return matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
-      // ถ้ามีฟิลด์ order ให้เรียงตาม order ก่อน
       if (a.order !== undefined && b.order !== undefined) {
         return a.order - b.order;
       }
-      // ถ้าไม่มีฟิลด์ order ให้เรียงตามชื่อภาษาไทย (ก - ฮ)
       return a.name.localeCompare(b.name, 'th');
     });
 
@@ -238,7 +234,6 @@ export const MenuManagement: React.FC = () => {
 
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        {/* Category Tabs */}
         <div className="flex flex-wrap gap-2">
           {categories.map((cat) => (
             <button
@@ -255,7 +250,6 @@ export const MenuManagement: React.FC = () => {
           ))}
         </div>
 
-        {/* Search Input */}
         <div className="relative w-full sm:w-64">
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -282,17 +276,14 @@ export const MenuManagement: React.FC = () => {
               key={item.id}
               className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition-shadow"
             >
-              {/* Image Preview */}
               <div className="h-40 bg-gray-100 relative overflow-hidden">
                 {item.imageUrl ? (
                   <img
                     src={item.imageUrl}
                     alt={item.name}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      // รูปภาพเสีย/โหลดไม่ได้
-                      (e.target as HTMLImageElement).src =
-                        'https://via.placeholder.com/300x200?text=No+Image';
+                    onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                      e.currentTarget.src = 'https://via.placeholder.com/300x200?text=No+Image';
                     }}
                   />
                 ) : (
@@ -305,7 +296,6 @@ export const MenuManagement: React.FC = () => {
                 </span>
               </div>
 
-              {/* Content */}
               <div className="p-4 flex-1 flex flex-col justify-between">
                 <div>
                   <h3 className="font-semibold text-gray-800 text-lg mb-1">{item.name}</h3>
@@ -314,7 +304,6 @@ export const MenuManagement: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
                   <button
                     onClick={() => handleEdit(item)}
