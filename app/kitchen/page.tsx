@@ -30,7 +30,7 @@ function KitchenContent() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const isInitialLoad = useRef<boolean>(true);
 
-  // ฟังก์ชันเล่นเสียงเตือน (ใช้ Web Audio API โดยไม่ต้องมีไฟล์ MP3)
+  // ฟังก์ชันเล่นเสียงเตือนแบบเร่งความดัง + เสียงแหลมคมสำหรับห้องครัว
   const playAlertSound = () => {
     try {
       if (!audioCtxRef.current) {
@@ -43,26 +43,30 @@ function KitchenContent() {
         ctx.resume();
       }
 
-      // เล่นเสียง Beep 2 ครั้ง (ปิ๊ป-ปิ๊ป)
-      const playBeep = (delay: number, frequency: number) => {
+      // เล่นเสียง Beep แรงๆ 3 จังหวะ (ตู้ด-ตู้ด-ตู้ด!)
+      const playBeep = (delay: number, frequency: number, duration: number = 0.2) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        osc.type = 'sine';
+        // เปลี่ยนเป็น 'square' จะได้เสียงแหลม คม และแทรกผ่านเสียงรบกวนในครัวได้ดีที่สุด
+        osc.type = 'square'; 
         osc.frequency.setValueAtTime(frequency, ctx.currentTime + delay);
 
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.3);
+        // เร่งระดับความดังสูงสุด (Gain = 1.0)
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + duration);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
 
         osc.start(ctx.currentTime + delay);
-        osc.stop(ctx.currentTime + delay + 0.3);
+        osc.stop(ctx.currentTime + delay + duration);
       };
 
-      playBeep(0, 880);   // เสียงสูงครั้งที่ 1
-      playBeep(0.2, 1046.5); // เสียงสูงครั้งที่ 2
+      // ยิงเสียง 3 จังหวะถี่ๆ ความถี่สูง (1000Hz - 1200Hz - 1500Hz)
+      playBeep(0, 1000, 0.15);
+      playBeep(0.2, 1200, 0.15);
+      playBeep(0.4, 1500, 0.3);
     } catch (e) {
       console.error('ไม่สามารถเล่นเสียงได้:', e);
     }
