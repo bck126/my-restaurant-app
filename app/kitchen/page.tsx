@@ -1,9 +1,10 @@
+
+
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { db } from './firebase'; // ปรับ path ให้ตรงกับโครงสร้างโปรเจกต์ของคุณ
+import { db } from '../firebase'; // หรือใช้ '@/app/firebase'
 import { collection, onSnapshot, updateDoc, doc, query, orderBy } from 'firebase/firestore';
-
 interface OrderItem {
   id: string;
   name: string;
