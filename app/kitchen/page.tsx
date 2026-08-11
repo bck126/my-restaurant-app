@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from './firebase';
+import { db } from '../../firebase'; // 👈 อ้างอิงถอย 2 ระดับไปยัง firebase.ts ที่ Root
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 
 interface OrderItem {
@@ -10,7 +10,7 @@ interface OrderItem {
   price: number;
   quantity: number;
   note?: string;
-  itemStatus?: 'pending' | 'done' | 'cancelled'; // 👈 สถานะของแต่ละรายการ
+  itemStatus?: 'pending' | 'done' | 'cancelled';
 }
 
 interface Order {
@@ -32,10 +32,10 @@ export default function KitchenPage() {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'asc'));
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const fetchedOrders: Order[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
+      const fetchedOrders: Order[] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
         return {
-          id: doc.id,
+          id: docSnap.id,
           table: data.table,
           orderType: data.orderType || 'ทานที่ร้าน',
           customerContact: data.customerContact || '',
@@ -76,7 +76,6 @@ export default function KitchenPage() {
       const orderRef = doc(db, 'orders', orderId);
       await updateDoc(orderRef, {
         items: updatedItems,
-        // ถ้าทำเสร็จครบทุกรายการ ให้เปลี่ยนสถานะบิลหลักเป็น completed อัตโนมัติ
         status: allDone ? 'completed' : 'cooking',
       });
     } catch (error) {
@@ -115,7 +114,7 @@ export default function KitchenPage() {
       const orderRef = doc(db, 'orders', orderId);
       await updateDoc(orderRef, {
         items: updatedItems,
-        totalPrice: newTotalPrice, // 👈 อัปเดตราคารวมใหม่ใน Firestore
+        totalPrice: newTotalPrice,
         status: isAllCancelled ? 'cancelled' : targetOrder.status,
       });
     } catch (error) {
@@ -159,7 +158,6 @@ export default function KitchenPage() {
                 key={order.id}
                 className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between"
               >
-                {/* Header ของแต่ละใบสั่งซื้อ */}
                 <div>
                   <div className="bg-slate-800 text-white p-3 flex justify-between items-center">
                     <div>
@@ -179,7 +177,6 @@ export default function KitchenPage() {
                     </div>
                   )}
 
-                  {/* รายการอาหาร */}
                   <div className="p-3 space-y-2">
                     {order.items.map((item, idx) => {
                       const isDone = item.itemStatus === 'done';
@@ -208,7 +205,6 @@ export default function KitchenPage() {
                             <div className="text-slate-400 text-[10px]">฿{item.price * item.quantity}</div>
                           </div>
 
-                          {/* ปุ่มควบคุมสถานะของแต่ละเมนู */}
                           {!isCancelled ? (
                             <div className="flex items-center gap-1.5">
                               {isDone ? (
@@ -244,7 +240,6 @@ export default function KitchenPage() {
                   </div>
                 </div>
 
-                {/* Footer กดเคลียร์ทั้งบิล */}
                 <div className="p-3 bg-slate-50 border-t border-slate-100">
                   <button
                     onClick={() => handleCompleteOrder(order.id)}
