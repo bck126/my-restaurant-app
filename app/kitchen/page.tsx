@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase'; // ✅ ถอย 1 ระดับจะเจอ app/firebase.ts
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 
@@ -26,12 +26,71 @@ interface Order {
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [isAudioAllowed, setIsAudioAllowed] = useState(false);
+  const isFirstLoad = useRef(true);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // ดึงรายการออเดอร์ทั้งหมดแบบ Realtime
+  // 🔊 ระบบสร้างเสียงเตือนแบบก้องดังชัดเจน (Web Audio API)
+  const playLoudSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioCtx();
+      }
+
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      // เล่นเสียงกระดิ่งเตือน 3 ครั้งรัวๆ
+      const times = [0, 0.2, 0.4];
+      times.forEach((startTime) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        // สลับความถี่เสียงสูง-ต่ำ ให้สะดุดหู
+        osc.frequency.setValueAtTime(880, ctx.currentTime + startTime); // A5
+        osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + startTime + 0.15); // A6
+
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime); // เร่งความดังสูงสุด
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + 0.18);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(ctx.currentTime + startTime);
+        osc.stop(ctx.currentTime + startTime + 0.2);
+      });
+    } catch (e) {
+      console.error('Audio playback error:', e);
+    }
+  };
+
+  // ปุ่มปลดล็อกเสียงสำหรับเบราว์เซอร์
+  const handleEnableAudio = () => {
+    setIsAudioAllowed(true);
+    playLoudSound(); // ทดสอบเสียง 1 ครั้งเมื่อกด
+  };
+
+  // ดึงรายการออเดอร์ทั้งหมดแบบ Realtime + ตรวจจับออเดอร์ใหม่เพื่อเล่นเสียง
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'asc'));
 
     const unsub = onSnapshot(q, (snapshot) => {
+      // ตรวจจับเอกสารใหม่ที่มีการเพิ่มเข้ามา (Added)
+      if (isFirstLoad.current) {
+        isFirstLoad.current = false;
+      } else {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            console.log('🔔 มีออเดอร์ใหม่เข้าครัว!');
+            playLoudSound();
+          }
+        });
+      }
+
       const fetchedOrders: Order[] = snapshot.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
@@ -136,6 +195,32 @@ export default function KitchenPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* แถบแจ้งเตือนสิทธิ์การใช้งานเสียงเตือน */}
+        {!isAudioAllowed ? (
+          <div className="bg-amber-500 text-white p-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-2 shadow-md animate-bounce">
+            <span className="text-xs font-bold text-center sm:text-left">
+              ⚠️ เบราว์เซอร์ต้องการการยินยอม: กรุณากดปุ่มเปิดเสียงเพื่อให้ระบบส่งเสียงเตือนเมื่อมีออเดอร์ใหม่เข้า
+            </span>
+            <button
+              onClick={handleEnableAudio}
+              className="bg-white text-amber-700 px-4 py-2 rounded-xl font-black text-xs shadow-sm hover:bg-amber-50 active:scale-95 transition whitespace-nowrap"
+            >
+              🔔 กดตรงนี้เพื่อเปิดเสียงเตือน
+            </button>
+          </div>
+        ) : (
+          <div className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex justify-between items-center shadow-xs">
+            <span>✅ เปิดระบบเสียงเตือนออเดอร์ใหม่แล้ว</span>
+            <button
+              onClick={playLoudSound}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1 rounded-lg text-[11px]"
+            >
+              🔊 ทดสอบเสียง
+            </button>
+          </div>
+        )}
+
         <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-xl font-black text-slate-800">🍳 หน้าจอห้องครัว (Kitchen Display)</h1>
