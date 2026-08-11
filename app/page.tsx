@@ -25,7 +25,7 @@ interface SubmittedOrderItem {
   price: number;
   quantity: number;
   note: string;
-  status?: string; // รองรับสถานะรายรายการ เช่น 'cancelled'
+  status?: string;
   isCancelled?: boolean;
 }
 
@@ -72,7 +72,7 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว
+  // 2. ดึงข้อมูลออเดอร์ที่สั่งไปแล้ว
   useEffect(() => {
     const q = query(
       collection(db, 'orders'),
@@ -98,7 +98,6 @@ function MenuContent() {
               isPaid: isPaid,
             };
           })
-          // 🎯 เงื่อนไข: ไม่เอาออเดอร์ที่จ่ายเงินแล้ว และ ไม่เอาออเดอร์ที่ถูกยกเลิกทั้งใบ
           .filter((order) => !order.isPaid && order.status !== 'cancelled');
 
         setActiveOrders(fetchedOrders);
@@ -199,7 +198,7 @@ function MenuContent() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 🎯 คำนวณราคารวมโดยคำนึงถึงรายการย่อยที่ถูกยกเลิกด้วย
+  // 🎯 คำนวณราคารวมใหม่ โดยไม่รวมรายการที่ถูกยกเลิก (item.status === 'cancelled' หรือ item.isCancelled === true)
   const totalSubmittedPrice = activeOrders.reduce((orderSum, order) => {
     const validItemsTotal = order.items.reduce((itemSum, item) => {
       const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
@@ -562,22 +561,22 @@ function MenuContent() {
                   <div className="space-y-2 text-xs">
                     {order.items &&
                       order.items.map((item, itemIdx) => {
-                        // 🎯 เช็คว่าเมนูนี้โดนยกเลิกเฉพาะรายการหรือไม่
+                        // 🎯 ตรวจสอบสถานะการยกเลิกของรายการย่อย
                         const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
 
                         return (
                           <div
                             key={itemIdx}
-                            className={`p-2.5 rounded-xl transition ${
+                            className={`p-3 rounded-xl border transition ${
                               isItemCancelled
-                                ? 'bg-red-50/60 border border-red-100'
-                                : 'bg-slate-50/80 border border-slate-100'
+                                ? 'bg-red-50/70 border-red-200/60'
+                                : 'bg-slate-50/80 border-slate-100'
                             }`}
                           >
                             <div className="flex justify-between items-start">
                               <div>
                                 <span
-                                  className={`font-bold ${
+                                  className={`font-bold text-sm ${
                                     isItemCancelled
                                       ? 'line-through text-red-400'
                                       : 'text-slate-800'
@@ -587,7 +586,7 @@ function MenuContent() {
                                 </span>
                                 {item.note && (
                                   <span
-                                    className={`block text-[10px] mt-0.5 ${
+                                    className={`block text-[11px] mt-0.5 ${
                                       isItemCancelled
                                         ? 'line-through text-red-300'
                                         : 'text-amber-700 font-medium'
@@ -608,10 +607,10 @@ function MenuContent() {
                               </span>
                             </div>
 
-                            {/* แสดงข้อความแจ้งเตือนสีแดงเหมือนหน้า Cashier */}
+                            {/* 🎯 แสดงป้ายแจ้งเตือนสีแดงสำหรับรายการที่ยกเลิก ให้ตรงกับฝั่ง Cashier */}
                             {isItemCancelled && (
-                              <div className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1">
-                                ❌ ครัวยกเลิกรายการนี้แล้ว
+                              <div className="text-[11px] text-red-500 font-bold mt-1.5 flex items-center gap-1">
+                                ✕ ครัวยกเลิกรายการนี้แล้ว
                               </div>
                             )}
                           </div>
@@ -621,6 +620,7 @@ function MenuContent() {
                 </div>
               ))}
 
+              {/* ยอดรวมสุทธิหลังหักรายการที่ยกเลิกแล้ว */}
               <div className="bg-amber-500 text-white p-4 rounded-2xl shadow-md flex justify-between items-center font-black">
                 <span>ยอดรวมทั้งหมดที่สั่งแล้ว</span>
                 <span className="text-xl">฿{totalSubmittedPrice}</span>
