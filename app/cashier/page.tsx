@@ -115,10 +115,10 @@ export default function CashierPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. ดึงรายการ "เรียกพนักงาน" (serviceCalls) ที่ค้างอยู่ (status === 'pending')
+  // 2. ดึงรายการ "เรียกพนักงาน" จาก collection 'notifications' ให้ตรงกับฝั่งลูกค้า
   useEffect(() => {
     const qCall = query(
-      collection(db, 'serviceCalls'),
+      collection(db, 'notifications'), // 👈 เปลี่ยนจาก serviceCalls เป็น notifications
       where('status', '==', 'pending')
     );
 
@@ -148,7 +148,7 @@ export default function CashierPage() {
   // ฟังก์ชันกดรับทราบการเรียกพนักงาน (ปิดการเรียกของโต๊ะนั้น)
   const handleResolveCall = async (callId: string) => {
     try {
-      const callRef = doc(db, 'serviceCalls', callId);
+      const callRef = doc(db, 'notifications', 'notifications' ); // 👈 เปลี่ยนเป็น 'notifications'
       await updateDoc(callRef, { status: 'resolved' });
     } catch (error) {
       console.error('Error resolving service call:', error);
