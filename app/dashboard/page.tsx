@@ -27,8 +27,11 @@ export default function DashboardSales() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🎯 State สำหรับควบคุมแถบเมนูด้านล่างหัวข้อหลัก ('summary' | 'daily' | 'monthly')
   const [reportTab, setReportTab] = useState<'summary' | 'daily' | 'monthly'>('summary');
+
+  // 🎯 State สำหรับเก็บค่าวันที่เริ่มต้นและสิ้นสุดในการกรองสินค้าขายดี (รูปแบบ YYYY-MM-DD)
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   // 1. ดึงข้อมูล orders แบบ Real-time
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function DashboardSales() {
     .reduce((sum, order) => sum + order.totalPrice, 0);
 
   // ================= 📅 2. จัดกลุ่มยอดขายรายวัน =================
-  const dailySalesMap: Record<string, { dateStr: string; total: number; count: number }> = {};
+  const dailySalesMap: Record<string, { dateStr: string; total: number; count: number; rawDate: Date }> = {};
   paidOrders.forEach((order) => {
     if (order.createdAt?.toDate) {
       const dateObj = order.createdAt.toDate();
@@ -84,16 +87,15 @@ export default function DashboardSales() {
         day: 'numeric',
       });
       if (!dailySalesMap[dateKey]) {
-        dailySalesMap[dateKey] = { dateStr: dateKey, total: 0, count: 0 };
+        dailySalesMap[dateKey] = { dateStr: dateKey, total: 0, count: 0, rawDate: dateObj };
       }
       dailySalesMap[dateKey].total += order.totalPrice;
       dailySalesMap[dateKey].count += 1;
     }
   });
-  const dailySalesList = Object.values(dailySalesMap).sort((a, b) => {
-    // เรียงจากใหม่ไปเก่า (อาศัยเทียบข้อความหรือเพิ่ม timestamp จัดเรียง)
-    return new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime();
-  });
+  const dailySalesList = Object.values(dailySalesMap).sort(
+    (a, b) => b.rawDate.getTime() - a.rawDate.getTime()
+  );
 
   // ================= 🗓️ 3. จัดกลุ่มยอดขายรายเดือน =================
   const monthlySalesMap: Record<string, { monthStr: string; total: number; count: number }> = {};
@@ -113,10 +115,32 @@ export default function DashboardSales() {
   });
   const monthlySalesList = Object.values(monthlySalesMap);
 
-  // ================= 🏆 4. คำนวณสินค้าที่ขายดีที่สุด =================
+  // ================= 🏆 4. คำนวณสินค้าที่ขายดีที่สุด (ตามช่วงวันที่เลือก) =================
+  const filteredOrdersForProducts = paidOrders.filter((order) => {
+    if (!order.createdAt?.toDate) return false;
+    const orderDate = order.createdAt.toDate();
+
+    // เคลียร์ชั่วโมงให้เป็น 00:00:00 เพื่อเทียบวันที่ได้แม่นยำ
+    orderDate.setHours(0, 0, 0, 0);
+
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      if (orderDate < start) return false;
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      if (orderDate > end) return false;
+    }
+
+    return true;
+  });
+
   const productSalesMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
 
-  paidOrders.forEach((order) => {
+  filteredOrdersForProducts.forEach((order) => {
     order.items.forEach((item) => {
       const isCancelled =
         item.itemStatus === 'cancelled' ||
@@ -135,6 +159,11 @@ export default function DashboardSales() {
   });
 
   const topProducts = Object.values(productSalesMap).sort((a, b) => b.quantity - a.quantity);
+
+  const handleResetDateFilter = () => {
+    setStartDate('');
+    setEndDate('');
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 bg-slate-50 min-h-screen">
@@ -195,14 +224,42 @@ export default function DashboardSales() {
             </div>
           </div>
 
-          {/* ตารางสินค้าขายดี */}
+          {/* ตารางสินค้าขายดี พร้อมตัวกรองวันที่ */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              🔥 10 อันดับ สินค้าขายดี
-            </h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                🔥 10 อันดับ สินค้าขายดี
+              </h2>
+
+              {/* 🎯 ส่วนเลือกช่วงวันที่ */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-bold text-slate-600">📅 ตั้งแต่วันที่:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <span className="font-bold text-slate-600">ถึง:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    onClick={handleResetDateFilter}
+                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition"
+                  >
+                    ล้างค่า
+                  </button>
+                )}
+              </div>
+            </div>
 
             {topProducts.length === 0 ? (
-              <p className="text-slate-400 text-xs py-8 text-center">ยังไม่มีข้อมูลการขาย</p>
+              <p className="text-slate-400 text-xs py-8 text-center">ไม่พบข้อมูลการขายในช่วงวันที่เลือก</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
