@@ -18,6 +18,7 @@ interface Order {
   items: OrderItem[];
   totalPrice: number;
   status: 'pending' | 'cooking' | 'completed' | 'cancelled';
+  paymentStatus?: string;
   isPaid?: boolean;
 }
 
@@ -37,8 +38,12 @@ export default function CashierPage() {
     return () => unsubscribe();
   }, []);
 
-  // 🎯 แสดงเฉพาะรายการที่ "ยังไม่ได้จ่ายเงิน" และ "ยังไม่ถูกยกเลิก"
-  const unpaidOrders = orders.filter((o) => !o.isPaid && o.status !== 'cancelled');
+  // 🎯 กรองเฉพาะออเดอร์ที่ "ยังไม่ได้จ่ายเงิน" และ "ยังไม่ถูกยกเลิก"
+  const unpaidOrders = orders.filter((o) => {
+    const isPaid = o.paymentStatus === 'paid' || o.isPaid === true;
+    const isCancelled = o.status === 'cancelled';
+    return !isPaid && !isCancelled;
+  });
 
   // ฟังก์ชันให้แคชเชียร์กดเก็บเงิน
   const handleConfirmPayment = async (orderId: string) => {
@@ -46,7 +51,12 @@ export default function CashierPage() {
 
     try {
       const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, { isPaid: true });
+      // 👈 อัปเดตทั้ง paymentStatus, isPaid และ status ให้ตรงกันทุกจุด
+      await updateDoc(orderRef, { 
+        paymentStatus: 'paid',
+        isPaid: true,
+        status: 'completed'
+      });
     } catch (error) {
       console.error('Payment Error:', error);
       alert('เกิดข้อผิดพลาดในการบันทึกการชำระเงิน');

@@ -91,8 +91,11 @@ function MenuContent() {
           const data = doc.data();
           const orderId = doc.id;
 
-          // ค้างรายการสรุปบิลไว้จนกว่าจะจ่ายเงิน (paymentStatus === 'paid') หรือยกเลิก
-          if (data.paymentStatus !== 'paid' && data.status !== 'cancelled') {
+          // กรองออเดอร์ที่ยังไม่ได้จ่ายเงิน และยังไม่ถูกยกเลิก/เสร็จสิ้น
+          const isPaid = data.paymentStatus === 'paid' || data.status === 'paid' || data.status === 'completed';
+          const isCancelled = data.status === 'cancelled';
+
+          if (!isPaid && !isCancelled) {
             const { id, ...restData } = data as SubmittedOrder;
             fetchedOrders.push({
               ...restData,
