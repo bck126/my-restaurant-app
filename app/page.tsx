@@ -277,6 +277,31 @@ function MenuContent() {
     }
   };
 
+  // 🧾 ฟังก์ชันเรียกเช็คบิลส่งไปยังแคชเชียร์
+  const handleCallBill = async () => {
+    if (activeOrders.length === 0) {
+      alert('ยังไม่มีรายการอาหารที่สั่งในบิลนี้ครับ');
+      return;
+    }
+
+    if (confirm(`ยืนยันเรียกเช็คบิล (ยอดรวม ฿${totalSubmittedPrice}) สำหรับโต๊ะ ${tableParam} หรือไม่?`)) {
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          table: String(tableParam),
+          type: 'call_bill',
+          message: `โต๊ะ ${tableParam} เรียกเช็คบิล (ยอดรวม ฿${totalSubmittedPrice})`,
+          totalAmount: totalSubmittedPrice,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+        });
+        alert('ส่งสัญญาณเรียกเช็คบิลเรียบร้อยแล้วครับ กรุณารอสักครู่ พนักงานกำลังนำบิลมาให้');
+      } catch (err) {
+        console.error('Error calling bill:', err);
+        alert('เกิดข้อผิดพลาดในการเรียกเช็คบิล กรุณาลองใหม่อีกครั้ง');
+      }
+    }
+  };
+
   const availableCategories = Array.from(new Set(menuItems.map((i) => i.category || 'ทั่วไป')));
   const categoriesNav = ['ทั้งหมด', ...availableCategories];
 
@@ -613,6 +638,14 @@ function MenuContent() {
                 <span>ยอดรวมทั้งหมดที่สั่งแล้ว</span>
                 <span className="text-xl">฿{totalSubmittedPrice}</span>
               </div>
+
+              {/* 🧾 ปุ่มเรียกเช็คบิล */}
+              <button
+                onClick={handleCallBill}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black py-4 rounded-2xl shadow-lg transition text-sm flex justify-center items-center gap-2"
+              >
+                💵 เรียกเช็คบิล (แจ้งพนักงานเก็บเงิน)
+              </button>
             </div>
           )}
         </div>
