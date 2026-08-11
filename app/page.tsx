@@ -34,6 +34,7 @@ interface SubmittedOrder {
   items: SubmittedOrderItem[];
   totalPrice: number;
   status: string;
+  paymentStatus?: string;
   createdAt?: any;
 }
 
@@ -74,38 +75,40 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime)
+  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime - ค้างไว้จนกว่าจะชำระเงิน)
   useEffect(() => {
-    // ดึงออเดอร์ทั้งหมดของโต๊ะนี้ที่สถานะยังไม่จบ (pending หรือ in_progress)
     const q = query(
       collection(db, 'orders'),
       where('table', '==', String(tableParam))
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const fetchedOrders: SubmittedOrder[] = [];
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedOrders: SubmittedOrder[] = [];
 
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const orderId = doc.id;
+        snapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          const orderId = doc.id;
 
-        // ดึงเฉพาะออเดอร์ที่ยังไม่เสร็จสิ้น หรือยกเลิก
-        if (data.status !== 'completed' && data.status !== 'cancelled') {
-          const { id, ...restData } = data as SubmittedOrder;
-          fetchedOrders.push({
-            ...restData,
-            id: orderId,
-            items: data.items || [],
-            totalPrice: data.totalPrice || 0,
-          });
-        }
-      });
+          // ค้างรายการสรุปบิลไว้จนกว่าจะจ่ายเงิน (paymentStatus === 'paid') หรือยกเลิก
+          if (data.paymentStatus !== 'paid' && data.status !== 'cancelled') {
+            const { id, ...restData } = data as SubmittedOrder;
+            fetchedOrders.push({
+              ...restData,
+              id: orderId,
+              items: data.items || [],
+              totalPrice: data.totalPrice || 0,
+            });
+          }
+        });
 
-      // เรียงลำดับออเดอร์ตามเวลา (ล่าสุดอยู่ล่าง)
-      setActiveOrders(fetchedOrders);
-    }, (error) => {
-      console.error("Error fetching active orders:", error);
-    });
+        setActiveOrders(fetchedOrders);
+      },
+      (error) => {
+        console.error('Error fetching active orders:', error);
+      }
+    );
 
     return () => unsub();
   }, [tableParam]);
@@ -182,7 +185,7 @@ function MenuContent() {
     updateCartQuantity(targetCartItemId, -1);
   };
 
-  // เลื่อนหน้าจอไปยังหมวดหมู่ที่เลือก ( Smooth Scroll โดยใช้ id )
+  // เลื่อนหน้าจอไปยังหมวดหมู่ที่เลือก
   const handleCategoryClick = (cat: string) => {
     setSelectedCategory(cat);
     if (cat === 'ทั้งหมด') {
@@ -190,7 +193,7 @@ function MenuContent() {
     } else {
       const targetElement = document.getElementById(`category-${cat}`);
       if (targetElement) {
-        const headerOffset = 110; // ชดเชยความสูง Header Sticky
+        const headerOffset = 110;
         const elementPosition = targetElement.getBoundingClientRect().top;
         const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
 
@@ -217,8 +220,8 @@ function MenuContent() {
 
     setIsSubmitting(true);
     try {
-      const docRef = await addDoc(collection(db, 'orders'), {
-        table: tableParam,
+      await addDoc(collection(db, 'orders'), {
+        table: String(tableParam),
         orderType: orderType,
         customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
         items: cart.map((item) => ({
@@ -230,12 +233,9 @@ function MenuContent() {
         })),
         totalPrice,
         status: 'pending',
+        paymentStatus: 'unpaid',
         createdAt: serverTimestamp(),
       });
-
-      const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
-      savedOrderIds.push(docRef.id);
-      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(savedOrderIds));
 
       setCart([]);
       setCustomerContact('');
@@ -255,7 +255,7 @@ function MenuContent() {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
       try {
         await addDoc(collection(db, 'notifications'), {
-          table: tableParam,
+          table: String(tableParam),
           type: 'call_staff',
           message: `โต๊ะ ${tableParam} เรียกพนักงาน`,
           status: 'pending',
@@ -269,11 +269,9 @@ function MenuContent() {
     }
   };
 
-  // ดึงหมวดหมู่ทั้งหมดแบบไม่ซ้ำ
   const availableCategories = Array.from(new Set(menuItems.map((i) => i.category || 'ทั่วไป')));
   const categoriesNav = ['ทั้งหมด', ...availableCategories];
 
-  // จัดกลุ่มรายการอาหารตามหมวดหมู่
   const groupedMenuItems = availableCategories.reduce((acc, category) => {
     acc[category] = menuItems.filter((i) => (i.category || 'ทั่วไป') === category);
     return acc;
@@ -281,7 +279,7 @@ function MenuContent() {
 
   return (
     <main className="min-h-screen bg-slate-50 pb-28">
-      {/* Header + หมวดหมู่ แบบ Sticky ด้านบน */}
+      {/* Header */}
       <header className="bg-white sticky top-0 z-30 shadow-sm border-b border-slate-200">
         <div className="max-w-xl mx-auto px-3 py-2 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
@@ -337,7 +335,7 @@ function MenuContent() {
           )}
         </div>
 
-        {/* แถบหมวดหมู่อาหาร (แสดงเฉพาะตอนอยู่ Tab เมนู) */}
+        {/* แถบหมวดหมู่อาหาร */}
         {activeTab === 'menu' && (
           <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 px-3 py-1.5 overflow-x-auto flex gap-1.5 no-scrollbar">
             <div className="max-w-3xl mx-auto flex gap-1.5 w-full">
@@ -374,19 +372,13 @@ function MenuContent() {
             if (items.length === 0) return null;
 
             return (
-              <section
-                key={category}
-                id={`category-${category}`}
-                className="space-y-3"
-              >
-                {/* หัวข้อหมวดหมู่ */}
+              <section key={category} id={`category-${category}`} className="space-y-3">
                 <div className="flex items-center gap-2 border-b-2 border-slate-200 pb-1.5 pt-2">
                   <div className="w-2 h-5 bg-amber-500 rounded-full"></div>
                   <h2 className="font-black text-slate-800 text-base">{category}</h2>
                   <span className="text-xs text-slate-400 font-medium">({items.length})</span>
                 </div>
 
-                {/* การ์ดรายการอาหารในหมวดหมู่ */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {items.map((item) => {
                     const qtyInCart = getItemQuantityInCart(item.id);
@@ -399,18 +391,10 @@ function MenuContent() {
                           isSelected ? 'border-amber-500 bg-amber-50/30 ring-1 ring-amber-400/50' : 'border-slate-200 hover:border-amber-400'
                         }`}
                       >
-                        {/* รูปภาพ */}
-                        <div 
-                          className="relative w-20 h-20 flex-shrink-0 cursor-pointer"
-                          onClick={() => handleOpenModal(item)}
-                        >
+                        <div className="relative w-20 h-20 flex-shrink-0 cursor-pointer" onClick={() => handleOpenModal(item)}>
                           {item.imageUrl ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="w-20 h-20 object-cover rounded-xl"
-                            />
+                            <img src={item.imageUrl} alt={item.name} className="w-20 h-20 object-cover rounded-xl" />
                           ) : (
                             <div className="w-20 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 font-bold text-xs">
                               Food
@@ -424,15 +408,9 @@ function MenuContent() {
                           )}
                         </div>
 
-                        {/* ข้อมูลเมนู + ปุ่มควบคุม */}
                         <div className="flex-1 flex flex-col justify-between">
-                          <div 
-                            className="cursor-pointer"
-                            onClick={() => handleOpenModal(item)}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
-                            </div>
+                          <div className="cursor-pointer" onClick={() => handleOpenModal(item)}>
+                            <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">
                               {isSelected ? 'แตะเพิ่มโน้ต/จำนวนเพิ่ม' : 'แตะเพื่อระบุโน้ต/สั่งซื้อ'}
                             </p>
@@ -453,9 +431,7 @@ function MenuContent() {
                                 >
                                   -
                                 </button>
-                                <span className="text-amber-900 font-black text-xs px-1">
-                                  {qtyInCart}
-                                </span>
+                                <span className="text-amber-900 font-black text-xs px-1">{qtyInCart}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -499,10 +475,7 @@ function MenuContent() {
             <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300">
               <p className="text-4xl mb-2">🛒</p>
               <p className="text-slate-500 font-bold text-sm">ยังไม่มีรายการอาหารในตะกร้า</p>
-              <button
-                onClick={() => setActiveTab('menu')}
-                className="mt-4 bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold"
-              >
+              <button onClick={() => setActiveTab('menu')} className="mt-4 bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold">
                 ไปเลือกเมนูอาหาร
               </button>
             </div>
@@ -510,33 +483,20 @@ function MenuContent() {
             <div className="space-y-3">
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
                 {cart.map((item) => (
-                  <div
-                    key={item.cartItemId}
-                    className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs"
-                  >
+                  <div key={item.cartItemId} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
                     <div>
                       <span className="font-bold text-slate-800 text-sm">{item.name}</span>
-                      {item.note && (
-                        <span className="text-amber-600 font-medium block text-[11px] mt-0.5">
-                          📝 {item.note}
-                        </span>
-                      )}
+                      {item.note && <span className="text-amber-600 font-medium block text-[11px] mt-0.5">📝 {item.note}</span>}
                       <span className="text-slate-500 block text-xs mt-0.5">
                         ฿{item.price} x {item.quantity} = ฿{item.price * item.quantity}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateCartQuantity(item.cartItemId, -1)}
-                        className="w-7 h-7 bg-slate-200 rounded-lg font-bold text-slate-700 text-sm flex items-center justify-center"
-                      >
+                      <button onClick={() => updateCartQuantity(item.cartItemId, -1)} className="w-7 h-7 bg-slate-200 rounded-lg font-bold text-slate-700 text-sm flex items-center justify-center">
                         -
                       </button>
                       <span className="font-bold text-slate-800 text-sm w-4 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updateCartQuantity(item.cartItemId, 1)}
-                        className="w-7 h-7 bg-amber-500 text-white rounded-lg font-bold text-sm flex items-center justify-center"
-                      >
+                      <button onClick={() => updateCartQuantity(item.cartItemId, 1)} className="w-7 h-7 bg-amber-500 text-white rounded-lg font-bold text-sm flex items-center justify-center">
                         +
                       </button>
                     </div>
@@ -580,7 +540,7 @@ function MenuContent() {
                   <div className="flex justify-between items-center text-xs font-bold text-amber-900 border-b border-slate-100 pb-2">
                     <span>รอบการสั่งที่ {idx + 1} ({order.orderType})</span>
                     <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px]">
-                      {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : '🔥 กำลังปรุงอาหาร'}
+                      {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : order.status === 'completed' ? '✅ เสิร์ฟแล้ว' : '🔥 กำลังปรุงอาหาร'}
                     </span>
                   </div>
                   <ul className="space-y-1.5 text-xs">
@@ -589,9 +549,7 @@ function MenuContent() {
                         <div>
                           <span className="font-bold">{item.name}</span>
                           <span className="text-slate-500"> x{item.quantity}</span>
-                          {item.note && (
-                            <span className="text-amber-700 block text-[10px]">📝 {item.note}</span>
-                          )}
+                          {item.note && <span className="text-amber-700 block text-[10px]">📝 {item.note}</span>}
                         </div>
                         <span className="font-bold text-slate-900">฿{item.price * item.quantity}</span>
                       </li>
@@ -609,7 +567,7 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= Pop-up / Modal ระบุโน้ตอาหาร ================= */}
+      {/* Modal ระบุโน้ตอาหาร */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
           <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -618,18 +576,13 @@ function MenuContent() {
                 <h3 className="text-lg font-black text-slate-900">{selectedItem.name}</h3>
                 <p className="text-amber-600 font-black text-base">฿{selectedItem.price}</p>
               </div>
-              <button
-                onClick={handleCloseModal}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full font-bold flex items-center justify-center text-sm"
-              >
+              <button onClick={handleCloseModal} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full font-bold flex items-center justify-center text-sm">
                 ✕
               </button>
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">
-                ✍️ รายละเอียดเพิ่มเติม / โน้ตกำกับ
-              </label>
+              <label className="text-xs font-bold text-slate-700 block mb-1">✍️ รายละเอียดเพิ่มเติม / โน้ตกำกับ</label>
               <input
                 type="text"
                 placeholder="เช่น ไม่เผ็ด, ไม่ใส่ผัก, ขอรสหวาน"
@@ -642,28 +595,17 @@ function MenuContent() {
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs font-bold text-slate-700">จำนวนที่ต้องการเพิ่ม</span>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setModalQuantity((q) => Math.max(1, q - 1))}
-                  className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base"
-                >
+                <button onClick={() => setModalQuantity((q) => Math.max(1, q - 1))} className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base">
                   -
                 </button>
-                <span className="font-black text-base text-slate-900 w-5 text-center">
-                  {modalQuantity}
-                </span>
-                <button
-                  onClick={() => setModalQuantity((q) => q + 1)}
-                  className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base"
-                >
+                <span className="font-black text-base text-slate-900 w-5 text-center">{modalQuantity}</span>
+                <button onClick={() => setModalQuantity((q) => q + 1)} className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base">
                   +
                 </button>
               </div>
             </div>
 
-            <button
-              onClick={handleAddToCartFromModal}
-              className="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold py-3 rounded-xl shadow-md transition text-xs flex justify-between px-5"
-            >
+            <button onClick={handleAddToCartFromModal} className="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold py-3 rounded-xl shadow-md transition text-xs flex justify-between px-5">
               <span>เพิ่มลงตะกร้า</span>
               <span>฿{selectedItem.price * modalQuantity}</span>
             </button>
@@ -671,16 +613,13 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= 🎯 แถบเมนูด้านล่าง (BOTTOM NAVIGATION BAR) ================= */}
+      {/* BOTTOM NAVIGATION BAR */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-200/90 backdrop-blur-md border-t border-slate-300 z-40 px-2 py-1.5">
         <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
-          {/* 1. ปุ่มเมนู */}
           <button
             onClick={() => setActiveTab('menu')}
             className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
-              activeTab === 'menu'
-                ? 'bg-amber-500 text-white shadow-sm font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
+              activeTab === 'menu' ? 'bg-amber-500 text-white shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -689,13 +628,10 @@ function MenuContent() {
             <span className="text-[11px]">เมนู</span>
           </button>
 
-          {/* 2. ปุ่มตะกร้า */}
           <button
             onClick={() => setActiveTab('cart')}
             className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition relative ${
-              activeTab === 'cart'
-                ? 'bg-amber-500 text-white shadow-sm font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
+              activeTab === 'cart' ? 'bg-amber-500 text-white shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
@@ -711,24 +647,17 @@ function MenuContent() {
             <span className="text-[11px]">ตะกร้า</span>
           </button>
 
-          {/* 3. ปุ่มเรียกพนักงาน */}
-          <button
-            onClick={handleCallStaff}
-            className="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-600 hover:text-slate-900 font-medium transition active:scale-95"
-          >
+          <button onClick={handleCallStaff} className="flex flex-col items-center justify-center py-1.5 rounded-xl text-slate-600 hover:text-slate-900 font-medium transition active:scale-95">
             <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             <span className="text-[11px]">เรียกพนักงาน</span>
           </button>
 
-          {/* 4. ปุ่มสรุปบิล */}
           <button
             onClick={() => setActiveTab('bill')}
             className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
-              activeTab === 'bill'
-                ? 'bg-amber-500 text-white shadow-sm font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
+              activeTab === 'bill' ? 'bg-amber-500 text-white shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
