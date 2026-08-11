@@ -30,8 +30,48 @@ export default function KitchenPage() {
   const isFirstLoad = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // 🔊 ระบบสร้างเสียงเตือนแบบก้องดังชัดเจน (Web Audio API)
-  const playLoudSound = () => {
+  // 🔔 ฟังก์ชันสร้างเสียงกระดิ่ง "กริ๊งงงงงง" แบบลากยาว
+  const playSingleChime = (ctx: AudioContext, startTime: number) => {
+    const duration = 0.45; // ความยาวต่อ 1 เสียงกริ๊ง (ลากยาว)
+
+    // ใช้ Oscillator 2 ตัวผสมความถี่คู่เพื่อสร้างเสียงกริ๊งสว่างใสและแหลมแทรกหู
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = 'triangle';
+    osc2.type = 'sine';
+
+    // ความถี่เสียงสูงสะดุดหู (2000Hz + 2400Hz)
+    osc1.frequency.setValueAtTime(2000, ctx.currentTime + startTime);
+    osc2.frequency.setValueAtTime(2400, ctx.currentTime + startTime);
+
+    // ใส่ Tremolo (การรัวของเสียงกระดิ่ง)
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.setValueAtTime(30, ctx.currentTime + startTime); // สั่นรัว 30 รอบ/วิ
+    lfoGain.gain.setValueAtTime(0.5, ctx.currentTime + startTime);
+    lfo.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+    lfo.start(ctx.currentTime + startTime);
+    lfo.stop(ctx.currentTime + startTime + duration);
+
+    // ปรับเร่ง Volume ความดังระดับสูงสุด (Gain = 1.0)
+    gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(ctx.currentTime + startTime);
+    osc2.start(ctx.currentTime + startTime);
+    osc1.stop(ctx.currentTime + startTime + duration);
+    osc2.stop(ctx.currentTime + startTime + duration);
+  };
+
+  // 🔊 ฟังก์ชันควบคุมจังหวะ: 3 ครั้ง - เว้น - 3 ครั้ง - เว้น - 3 ครั้ง
+  const playSuperLoudAlarm = () => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!audioCtxRef.current) {
@@ -43,50 +83,45 @@ export default function KitchenPage() {
         ctx.resume();
       }
 
-      // เล่นเสียงกระดิ่งเตือน 3 ครั้งรัวๆ
-      const times = [0, 0.2, 0.4];
-      times.forEach((startTime) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+      // โครงสร้างเวลาการดังแบบ 3 ชุด (ชุดละ 3 ครั้ง)
+      // ชุดที่ 1: 0.0s, 0.5s, 1.0s
+      // ชุดที่ 2: 2.0s, 2.5s, 3.0s (เว้นช่วงจากชุดแรก 1 วินาที)
+      // ชุดที่ 3: 4.0s, 4.5s, 5.0s (เว้นช่วงจากชุดสอง 1 วินาที)
+      const pattern = [
+        // ชุดที่ 1 (3 ครั้ง)
+        0.0, 0.5, 1.0,
+        // ชุดที่ 2 (3 ครั้ง)
+        2.0, 2.5, 3.0,
+        // ชุดที่ 3 (3 ครั้ง)
+        4.0, 4.5, 5.0,
+      ];
 
-        osc.type = 'sine';
-        // สลับความถี่เสียงสูง-ต่ำ ให้สะดุดหู
-        osc.frequency.setValueAtTime(880, ctx.currentTime + startTime); // A5
-        osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + startTime + 0.15); // A6
-
-        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime); // เร่งความดังสูงสุด
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + 0.18);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(ctx.currentTime + startTime);
-        osc.stop(ctx.currentTime + startTime + 0.2);
+      pattern.forEach((offset) => {
+        playSingleChime(ctx, offset);
       });
     } catch (e) {
       console.error('Audio playback error:', e);
     }
   };
 
-  // ปุ่มปลดล็อกเสียงสำหรับเบราว์เซอร์
+  // ปุ่มเปิดใช้งานเสียง
   const handleEnableAudio = () => {
     setIsAudioAllowed(true);
-    playLoudSound(); // ทดสอบเสียง 1 ครั้งเมื่อกด
+    playSuperLoudAlarm(); // ทดสอบเล่นเสียงทันทีเมื่อกดเปิด
   };
 
-  // ดึงรายการออเดอร์ทั้งหมดแบบ Realtime + ตรวจจับออเดอร์ใหม่เพื่อเล่นเสียง
+  // ดึงรายการออเดอร์ Realtime และสั่งเสียงเตือนเมื่อมีออเดอร์ใหม่
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'asc'));
 
     const unsub = onSnapshot(q, (snapshot) => {
-      // ตรวจจับเอกสารใหม่ที่มีการเพิ่มเข้ามา (Added)
       if (isFirstLoad.current) {
         isFirstLoad.current = false;
       } else {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
-            console.log('🔔 มีออเดอร์ใหม่เข้าครัว!');
-            playLoudSound();
+            console.log('🚨 มีออเดอร์ใหม่เข้าครัว!');
+            playSuperLoudAlarm();
           }
         });
       }
@@ -105,7 +140,6 @@ export default function KitchenPage() {
         };
       });
 
-      // กรองเอาเฉพาะออเดอร์ที่ยังทำไม่เสร็จ และยังไม่ถูกยกเลิกทั้งบิล
       const activeKitchenOrders = fetchedOrders.filter(
         (o) => o.status !== 'completed' && o.status !== 'cancelled'
       );
@@ -116,7 +150,7 @@ export default function KitchenPage() {
     return () => unsub();
   }, []);
 
-  // 1. กดเปลี่ยนสถานะ "ทำเสร็จ" ของรายการอาหารแต่ละรายการ
+  // 1. กดเปลี่ยนสถานะ "ทำเสร็จ"
   const handleItemStatusChange = async (orderId: string, itemIndex: number, newStatus: 'done' | 'pending') => {
     const targetOrder = orders.find((o) => o.id === orderId);
     if (!targetOrder) return;
@@ -127,7 +161,6 @@ export default function KitchenPage() {
       itemStatus: newStatus,
     };
 
-    // เช็กว่าทำเสร็จครบทุกรายการที่ไม่ได้ถูกยกเลิกหรือยัง
     const activeItems = updatedItems.filter((i) => i.itemStatus !== 'cancelled');
     const allDone = activeItems.length > 0 && activeItems.every((i) => i.itemStatus === 'done');
 
@@ -143,7 +176,7 @@ export default function KitchenPage() {
     }
   };
 
-  // 2. กดยกเลิกรายการอาหาร (คำนวณราคารวมใหม่ และปรับสถานะ)
+  // 2. กดยกเลิกรายการอาหาร
   const handleCancelItem = async (orderId: string, itemIndex: number) => {
     const targetOrder = orders.find((o) => o.id === orderId);
     if (!targetOrder) return;
@@ -160,12 +193,10 @@ export default function KitchenPage() {
       itemStatus: 'cancelled',
     };
 
-    // คำนวณราคารวมใหม่เฉพาะรายการที่ไม่ถูกยกเลิก
     const newTotalPrice = updatedItems.reduce((sum, item) => {
       return item.itemStatus === 'cancelled' ? sum : sum + item.price * item.quantity;
     }, 0);
 
-    // เช็กว่ารายการที่เหลือโดนยกเลิกหมดทั้งบิลแล้วหรือไม่
     const activeItems = updatedItems.filter((i) => i.itemStatus !== 'cancelled');
     const isAllCancelled = activeItems.length === 0;
 
@@ -182,7 +213,7 @@ export default function KitchenPage() {
     }
   };
 
-  // 3. กดเสิร์ฟ/เคลียร์ออเดอร์ทั้งบิล
+  // 3. กดเสิร์ฟ/ปิดบิล
   const handleCompleteOrder = async (orderId: string) => {
     try {
       const orderRef = doc(db, 'orders', orderId);
@@ -196,27 +227,27 @@ export default function KitchenPage() {
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* แถบแจ้งเตือนสิทธิ์การใช้งานเสียงเตือน */}
+        {/* แถบปลดล็อกเสียงเตือน */}
         {!isAudioAllowed ? (
-          <div className="bg-amber-500 text-white p-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-2 shadow-md animate-bounce">
+          <div className="bg-red-600 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 shadow-lg animate-bounce">
             <span className="text-xs font-bold text-center sm:text-left">
-              ⚠️ เบราว์เซอร์ต้องการการยินยอม: กรุณากดปุ่มเปิดเสียงเพื่อให้ระบบส่งเสียงเตือนเมื่อมีออเดอร์ใหม่เข้า
+              📢 กรุณากดปุ่มเปิดระบบเสียงเตือนความดังสูง สำหรับห้องครัวก่อนเริ่มงาน
             </span>
             <button
               onClick={handleEnableAudio}
-              className="bg-white text-amber-700 px-4 py-2 rounded-xl font-black text-xs shadow-sm hover:bg-amber-50 active:scale-95 transition whitespace-nowrap"
+              className="bg-white text-red-600 px-4 py-2 rounded-xl font-black text-xs shadow-md hover:bg-red-50 active:scale-95 transition whitespace-nowrap"
             >
-              🔔 กดตรงนี้เพื่อเปิดเสียงเตือน
+              🔔 เปิดเสียงเตือน (กริ๊งงงงงง!)
             </button>
           </div>
         ) : (
-          <div className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex justify-between items-center shadow-xs">
-            <span>✅ เปิดระบบเสียงเตือนออเดอร์ใหม่แล้ว</span>
+          <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex justify-between items-center shadow-sm">
+            <span>✅ เปิดระบบเสียงเตือนออเดอร์ใหม่ระดับความดังสูงสุดเรียบร้อย</span>
             <button
-              onClick={playLoudSound}
-              className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1 rounded-lg text-[11px]"
+              onClick={playSuperLoudAlarm}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded-lg text-xs font-black shadow-xs transition"
             >
-              🔊 ทดสอบเสียง
+              🔊 ทดสอบฟังเสียงกระดิ่ง
             </button>
           </div>
         )}
