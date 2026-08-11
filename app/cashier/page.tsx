@@ -148,7 +148,7 @@ export default function CashierPage() {
   // ฟังก์ชันกดรับทราบการเรียกพนักงาน (ปิดการเรียกของโต๊ะนั้น)
   const handleResolveCall = async (callId: string) => {
     try {
-      const callRef = doc(db, 'notifications', 'notifications' ); // 👈 เปลี่ยนเป็น 'notifications'
+      const callRef = doc(db, 'serviceCalls', callId);
       await updateDoc(callRef, { status: 'resolved' });
     } catch (error) {
       console.error('Error resolving service call:', error);
