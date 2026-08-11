@@ -110,14 +110,42 @@ export default function CashierPage() {
                   </div>
 
                   {/* รายการอาหาร */}
-                  <div className="space-y-2 border-t border-b border-slate-100 py-3 my-2">
-                    {order.items?.map((item, i) => (
-                      <div key={i} className="flex justify-between text-sm text-slate-600">
-                        <span>{item.name} x{item.quantity}</span>
-                        <span>฿{item.price * item.quantity}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="p-3 space-y-2">
+  {order.items.map((item: any, idx: number) => {
+    const isCancelled = item.itemStatus === 'cancelled';
+
+    return (
+      <div
+        key={idx}
+        className={`flex justify-between items-center p-2.5 rounded-xl border text-xs transition ${
+          isCancelled
+            ? 'bg-red-50 border-red-200 text-red-400 opacity-70'
+            : 'bg-white border-slate-200 text-slate-800'
+        }`}
+      >
+        <div>
+          <div className={`font-bold ${isCancelled ? 'line-through' : ''}`}>
+            {item.name} <span className="font-black">x{item.quantity}</span>
+          </div>
+          {item.note && (
+            <div className="text-[10px] text-amber-600">
+              📝 {item.note}
+            </div>
+          )}
+          {isCancelled && (
+            <div className="text-[10px] text-red-500 font-bold mt-0.5">
+              ✕ ครัวยกเลิกรายการนี้แล้ว
+            </div>
+          )}
+        </div>
+
+        <div className={`font-bold ${isCancelled ? 'line-through text-red-400' : 'text-slate-700'}`}>
+          ฿{item.price * item.quantity}
+        </div>
+      </div>
+    );
+  })}
+</div>
 
                   {/* ยอดรวม */}
                   <div className="flex justify-between items-center mt-3 text-lg font-black text-slate-900">

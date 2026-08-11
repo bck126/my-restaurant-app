@@ -44,6 +44,7 @@ function MenuContent() {
   const tableParam = searchParams.get('table') || '1';
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [isLoadingMenu, setIsLoadingMenu] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('ทั้งหมด');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,13 +67,22 @@ function MenuContent() {
 
   // 1. ดึงข้อมูลเมนูอาหารจาก Firebase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'menu'), (snapshot) => {
-      const items: MenuItem[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as MenuItem[];
-      setMenuItems(items);
-    });
+    setIsLoadingMenu(true);
+    const unsub = onSnapshot(
+      collection(db, 'menu'),
+      (snapshot) => {
+        const items: MenuItem[] = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as MenuItem[];
+        setMenuItems(items);
+        setIsLoadingMenu(false);
+      },
+      (error) => {
+        console.error('Error fetching menu:', error);
+        setIsLoadingMenu(false);
+      }
+    );
     return () => unsub();
   }, []);
 
@@ -106,6 +116,13 @@ function MenuContent() {
               totalPrice: data.totalPrice || 0,
             });
           }
+        });
+
+        // เรียงลำดับตามวันที่สร้าง (เก่าไปใหม่)
+        fetchedOrders.sort((a, b) => {
+          const tA = a.createdAt?.seconds || 0;
+          const tB = b.createdAt?.seconds || 0;
+          return tA - tB;
         });
 
         setActiveOrders(fetchedOrders);
@@ -239,7 +256,7 @@ function MenuContent() {
         totalPrice,
         status: 'pending',
         paymentStatus: 'unpaid',
-        isPaid: false, // 👈 กำหนดค่า isPaid ให้เป็น false เริ่มต้น
+        isPaid: false,
         createdAt: serverTimestamp(),
       });
 
@@ -342,7 +359,7 @@ function MenuContent() {
         </div>
 
         {/* แถบหมวดหมู่อาหาร */}
-        {activeTab === 'menu' && (
+        {activeTab === 'menu' && availableCategories.length > 0 && (
           <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 px-3 py-1.5 overflow-x-auto flex gap-1.5 no-scrollbar">
             <div className="max-w-3xl mx-auto flex gap-1.5 w-full">
               {categoriesNav.map((cat) => (
@@ -370,107 +387,117 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= TAP 1: รายการอาหาร (MENU) ================= */}
+      {/* ================= TAB 1: รายการอาหาร (MENU) ================= */}
       {activeTab === 'menu' && (
         <div className="max-w-3xl mx-auto p-3 space-y-6">
-          {availableCategories.map((category) => {
-            const items = groupedMenuItems[category] || [];
-            if (items.length === 0) return null;
+          {isLoadingMenu ? (
+            <div className="text-center py-12 text-slate-400 font-bold text-xs">
+              ⏳ กำลังโหลดเมนูอาหาร...
+            </div>
+          ) : menuItems.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500 text-xs font-bold">
+              ยังไม่มีรายการอาหารในขณะนี้
+            </div>
+          ) : (
+            availableCategories.map((category) => {
+              const items = groupedMenuItems[category] || [];
+              if (items.length === 0) return null;
 
-            return (
-              <section key={category} id={`category-${category}`} className="space-y-3">
-                <div className="flex items-center gap-2 border-b-2 border-slate-200 pb-1.5 pt-2">
-                  <div className="w-2 h-5 bg-amber-500 rounded-full"></div>
-                  <h2 className="font-black text-slate-800 text-base">{category}</h2>
-                  <span className="text-xs text-slate-400 font-medium">({items.length})</span>
-                </div>
+              return (
+                <section key={category} id={`category-${category}`} className="space-y-3">
+                  <div className="flex items-center gap-2 border-b-2 border-slate-200 pb-1.5 pt-2">
+                    <div className="w-2 h-5 bg-amber-500 rounded-full"></div>
+                    <h2 className="font-black text-slate-800 text-base">{category}</h2>
+                    <span className="text-xs text-slate-400 font-medium">({items.length})</span>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {items.map((item) => {
-                    const qtyInCart = getItemQuantityInCart(item.id);
-                    const isSelected = qtyInCart > 0;
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {items.map((item) => {
+                      const qtyInCart = getItemQuantityInCart(item.id);
+                      const isSelected = qtyInCart > 0;
 
-                    return (
-                      <div
-                        key={item.id}
-                        className={`bg-white rounded-2xl p-3 shadow-xs border transition flex gap-3 relative overflow-hidden ${
-                          isSelected ? 'border-amber-500 bg-amber-50/30 ring-1 ring-amber-400/50' : 'border-slate-200 hover:border-amber-400'
-                        }`}
-                      >
-                        <div className="relative w-20 h-20 flex-shrink-0 cursor-pointer" onClick={() => handleOpenModal(item)}>
-                          {item.imageUrl ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={item.imageUrl} alt={item.name} className="w-20 h-20 object-cover rounded-xl" />
-                          ) : (
-                            <div className="w-20 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 font-bold text-xs">
-                              Food
-                            </div>
-                          )}
+                      return (
+                        <div
+                          key={item.id}
+                          className={`bg-white rounded-2xl p-3 shadow-xs border transition flex gap-3 relative overflow-hidden ${
+                            isSelected ? 'border-amber-500 bg-amber-50/30 ring-1 ring-amber-400/50' : 'border-slate-200 hover:border-amber-400'
+                          }`}
+                        >
+                          <div className="relative w-20 h-20 flex-shrink-0 cursor-pointer" onClick={() => handleOpenModal(item)}>
+                            {item.imageUrl ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={item.imageUrl} alt={item.name} className="w-20 h-20 object-cover rounded-xl" />
+                            ) : (
+                              <div className="w-20 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 font-bold text-xs">
+                                Food
+                              </div>
+                            )}
 
-                          {isSelected && (
-                            <div className="absolute -top-1 -left-1 bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-lg shadow-md animate-pulse">
-                              ในตะกร้า x{qtyInCart}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 flex flex-col justify-between">
-                          <div className="cursor-pointer" onClick={() => handleOpenModal(item)}>
-                            <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              {isSelected ? 'แตะเพิ่มโน้ต/จำนวนเพิ่ม' : 'แตะเพื่อระบุโน้ต/สั่งซื้อ'}
-                            </p>
+                            {isSelected && (
+                              <div className="absolute -top-1 -left-1 bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-lg shadow-md animate-pulse">
+                                ในตะกร้า x{qtyInCart}
+                              </div>
+                            )}
                           </div>
 
-                          <div className="flex justify-between items-end mt-2">
-                            <span className="text-amber-600 font-black text-base">฿{item.price}</span>
+                          <div className="flex-1 flex flex-col justify-between">
+                            <div className="cursor-pointer" onClick={() => handleOpenModal(item)}>
+                              <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                {isSelected ? 'แตะเพิ่มโน้ต/จำนวนเพิ่ม' : 'แตะเพื่อระบุโน้ต/สั่งซื้อ'}
+                              </p>
+                            </div>
 
-                            {isSelected ? (
-                              <div className="flex items-center gap-1.5 bg-amber-100 p-1 rounded-xl border border-amber-200">
+                            <div className="flex justify-between items-end mt-2">
+                              <span className="text-amber-600 font-black text-base">฿{item.price}</span>
+
+                              {isSelected ? (
+                                <div className="flex items-center gap-1.5 bg-amber-100 p-1 rounded-xl border border-amber-200">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDecreaseItemFromCard(item.id);
+                                    }}
+                                    className="w-6 h-6 bg-white hover:bg-slate-100 text-amber-800 font-black rounded-lg text-xs shadow-xs flex items-center justify-center"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="text-amber-900 font-black text-xs px-1">{qtyInCart}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenModal(item);
+                                    }}
+                                    className="w-6 h-6 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-lg text-xs shadow-xs flex items-center justify-center"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDecreaseItemFromCard(item.id);
-                                  }}
-                                  className="w-6 h-6 bg-white hover:bg-slate-100 text-amber-800 font-black rounded-lg text-xs shadow-xs flex items-center justify-center"
-                                >
-                                  -
-                                </button>
-                                <span className="text-amber-900 font-black text-xs px-1">{qtyInCart}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenModal(item);
-                                  }}
-                                  className="w-6 h-6 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-lg text-xs shadow-xs flex items-center justify-center"
+                                  onClick={() => handleOpenModal(item)}
+                                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold w-8 h-8 rounded-lg shadow-xs flex items-center justify-center text-lg active:scale-95 transition"
                                 >
                                   +
                                 </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenModal(item)}
-                                className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold w-8 h-8 rounded-lg shadow-xs flex items-center justify-center text-lg active:scale-95 transition"
-                              >
-                                +
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })
+          )}
         </div>
       )}
 
-      {/* ================= TAP 2: ตะกร้าสินค้า (CART) ================= */}
+      {/* ================= TAB 2: ตะกร้าสินค้า (CART) ================= */}
       {activeTab === 'cart' && (
         <div className="max-w-2xl mx-auto p-4 animate-fade-in space-y-4">
           <h2 className="text-lg font-black text-slate-800 border-b pb-2 flex items-center gap-2">
@@ -527,7 +554,7 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= TAP 3: สรุปบิล (BILL) ================= */}
+      {/* ================= TAB 3: สรุปบิล (BILL) ================= */}
       {activeTab === 'bill' && (
         <div className="max-w-2xl mx-auto p-4 animate-fade-in space-y-4">
           <h2 className="text-lg font-black text-slate-800 border-b pb-2 flex items-center gap-2">
