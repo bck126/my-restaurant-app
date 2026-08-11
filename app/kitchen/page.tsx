@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '../../firebase'; // 👈 อ้างอิงถอย 2 ระดับไปยัง firebase.ts ที่ Root
+import { db } from '../firebase'; // ✅ ถอย 1 ระดับจะเจอ app/firebase.ts
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 
 interface OrderItem {
