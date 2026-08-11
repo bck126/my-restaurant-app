@@ -35,6 +35,7 @@ interface SubmittedOrder {
   totalPrice: number;
   status: string;
   paymentStatus?: string;
+  isPaid?: boolean;
   createdAt?: any;
 }
 
@@ -75,7 +76,7 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime - ค้างไว้จนกว่าจะชำระเงิน)
+  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime - กรองเอาเฉพาะรายการที่ยังไม่ได้ชำระเงิน)
   useEffect(() => {
     const q = query(
       collection(db, 'orders'),
@@ -91,8 +92,12 @@ function MenuContent() {
           const data = doc.data();
           const orderId = doc.id;
 
-          // ค้างรายการสรุปบิลไว้จนกว่าจะจ่ายเงิน (paymentStatus === 'paid') หรือยกเลิก
-          if (data.paymentStatus !== 'paid' && data.status !== 'cancelled') {
+          // 🎯 ตรวจสอบว่าชำระเงินหรือยกเลิกไปแล้วหรือยัง
+          const isPaid = data.paymentStatus === 'paid' || data.isPaid === true;
+          const isCancelled = data.status === 'cancelled';
+
+          // แสดงเฉพาะออเดอร์ที่ยังไม่จ่ายเงิน และยังไม่ถูกยกเลิก
+          if (!isPaid && !isCancelled) {
             const { id, ...restData } = data as SubmittedOrder;
             fetchedOrders.push({
               ...restData,
@@ -234,6 +239,7 @@ function MenuContent() {
         totalPrice,
         status: 'pending',
         paymentStatus: 'unpaid',
+        isPaid: false, // 👈 กำหนดค่า isPaid ให้เป็น false เริ่มต้น
         createdAt: serverTimestamp(),
       });
 
