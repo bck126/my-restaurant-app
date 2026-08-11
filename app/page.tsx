@@ -76,34 +76,35 @@ function MenuContent() {
 
   // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime)
   useEffect(() => {
-    const savedOrderIds: string[] = JSON.parse(localStorage.getItem(`table_${tableParam}_orders`) || '[]');
-
-    if (savedOrderIds.length === 0) {
-      setActiveOrders([]);
-      return;
-    }
-
+    // ดึงออเดอร์ทั้งหมดของโต๊ะนี้ที่สถานะยังไม่จบ (pending หรือ in_progress)
     const q = query(
       collection(db, 'orders'),
-      where('table', '==', tableParam)
+      where('table', '==', String(tableParam))
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
       const fetchedOrders: SubmittedOrder[] = [];
-      const currentActiveIds: string[] = [];
 
       snapshot.docs.forEach((doc) => {
-        const data = doc.data() as SubmittedOrder;
+        const data = doc.data();
         const orderId = doc.id;
 
-        if (savedOrderIds.includes(orderId) && data.status !== 'completed' && data.status !== 'cancelled') {
-          fetchedOrders.push({ ...data, id: orderId });
-          currentActiveIds.push(orderId);
+        // ดึงเฉพาะออเดอร์ที่ยังไม่เสร็จสิ้น หรือยกเลิก
+        if (data.status !== 'completed' && data.status !== 'cancelled') {
+          const { id, ...restData } = data as SubmittedOrder;
+          fetchedOrders.push({
+            ...restData,
+            id: orderId,
+            items: data.items || [],
+            totalPrice: data.totalPrice || 0,
+          });
         }
       });
 
-      localStorage.setItem(`table_${tableParam}_orders`, JSON.stringify(currentActiveIds));
+      // เรียงลำดับออเดอร์ตามเวลา (ล่าสุดอยู่ล่าง)
       setActiveOrders(fetchedOrders);
+    }, (error) => {
+      console.error("Error fetching active orders:", error);
     });
 
     return () => unsub();
