@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from './firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface MenuItem {
   id: string;
@@ -20,12 +20,13 @@ interface CartItem extends MenuItem {
 }
 
 interface SubmittedOrderItem {
-  id: string;
+  id?: string;
   name: string;
   price: number;
   quantity: number;
-  note: string;
+  note?: string;
   status?: string;
+  itemStatus?: string;
   isCancelled?: boolean;
 }
 
@@ -40,18 +41,13 @@ interface SubmittedOrder {
   isPaid?: boolean;
 }
 
-// ฟังก์ชันช่วยเช็กว่ารายการย่อยนี้ถูกยกเลิกหรือไม่ (ครอบคลุมทุกเคส)
+// 🎯 ฟังก์ชันเช็กสถานะการยกเลิกให้ตรงกับฝั่ง Cashier 100%
 const checkIsItemCancelled = (item: SubmittedOrderItem): boolean => {
   if (!item) return false;
-  if (item.isCancelled === true) return true;
-  if (!item.status) return false;
-  
-  const statusLower = String(item.status).toLowerCase().trim();
   return (
-    statusLower === 'cancelled' ||
-    statusLower === 'cancel' ||
-    statusLower === 'ยกเลิก' ||
-    statusLower === 'void'
+    item.itemStatus === 'cancelled' ||
+    item.status === 'cancelled' ||
+    item.isCancelled === true
   );
 };
 
@@ -87,7 +83,7 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ของโต๊ะนี้ (รองรับทั้ง String และ Number)
+  // 2. ดึงข้อมูลออเดอร์ของโต๊ะนี้
   useEffect(() => {
     const stringTable = String(tableParam);
     const numberTable = Number(tableParam);
@@ -110,16 +106,9 @@ function MenuContent() {
           };
         })
         .filter((order) => {
-          // เช็กเลขโต๊ะตรงกันหรือไม่ (ไม่ว่าจะเก็บเป็น string หรือ number)
           const isSameTable =
             String(order.table) === stringTable || order.table === numberTable;
-          
-          // ไม่เอาออเดอร์ที่จ่ายเงินแล้ว หรือยกเลิกทั้งใบออเดอร์
-          const orderStatusLower = String(order.status).toLowerCase();
-          const isOrderCancelled =
-            orderStatusLower === 'cancelled' ||
-            orderStatusLower === 'cancel' ||
-            orderStatusLower === 'ยกเลิก';
+          const isOrderCancelled = order.status === 'cancelled';
 
           return isSameTable && !order.isPaid && !isOrderCancelled;
         });
@@ -218,7 +207,7 @@ function MenuContent() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 🎯 คำนวณราคารวมใหม่ หักรายการที่ยกเลิกออกโดยอัตโนมัติ
+  // 🎯 คำนวณราคารวมใหม่ โดยหักรายการที่มี itemStatus === 'cancelled' ออก
   const totalSubmittedPrice = activeOrders.reduce((orderSum, order) => {
     const validItemsTotal = order.items.reduce((itemSum, item) => {
       const isCancelled = checkIsItemCancelled(item);
@@ -248,6 +237,7 @@ function MenuContent() {
           quantity: item.quantity,
           note: item.note,
           status: 'pending',
+          itemStatus: 'pending',
         })),
         totalPrice,
         status: 'pending',
@@ -577,61 +567,40 @@ function MenuContent() {
                     </span>
                   </div>
 
-                  {/* รายการอาหารในออเดอร์ */}
+                  {/* 🎯 แสดงรายการอาหาร โดยใช้คลาสสไตล์เดียวกับฝั่ง Cashier เป๊ะๆ */}
                   <div className="space-y-2 text-xs">
                     {order.items &&
                       order.items.map((item, itemIdx) => {
-                        const isItemCancelled = checkIsItemCancelled(item);
+                        const isCancelled = checkIsItemCancelled(item);
 
                         return (
                           <div
                             key={itemIdx}
-                            className={`p-3 rounded-xl border transition ${
-                              isItemCancelled
-                                ? 'bg-red-50 border-red-200'
-                                : 'bg-slate-50/80 border-slate-100'
+                            className={`flex justify-between items-center p-2.5 rounded-xl border transition ${
+                              isCancelled
+                                ? 'bg-red-50 border-red-200 text-red-400 opacity-70'
+                                : 'bg-slate-50/80 border-slate-100 text-slate-800'
                             }`}
                           >
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <span
-                                  className={`font-bold text-sm ${
-                                    isItemCancelled
-                                      ? 'line-through text-red-500'
-                                      : 'text-slate-800'
-                                  }`}
-                                >
-                                  {item.name} x{item.quantity}
-                                </span>
-                                {item.note && (
-                                  <span
-                                    className={`block text-[11px] mt-0.5 ${
-                                      isItemCancelled
-                                        ? 'line-through text-red-400'
-                                        : 'text-amber-700 font-medium'
-                                    }`}
-                                  >
-                                    📝 {item.note}
-                                  </span>
-                                )}
+                            <div>
+                              <div className={`font-bold ${isCancelled ? 'line-through' : ''}`}>
+                                {item.name} <span className="font-black">x{item.quantity}</span>
                               </div>
-                              <span
-                                className={`font-bold ${
-                                  isItemCancelled
-                                    ? 'line-through text-red-500'
-                                    : 'text-slate-900'
-                                }`}
-                              >
-                                ฿{item.price * item.quantity}
-                              </span>
+                              {item.note && (
+                                <div className={`text-[10px] ${isCancelled ? 'line-through text-red-300' : 'text-amber-600'}`}>
+                                  📝 {item.note}
+                                </div>
+                              )}
+                              {isCancelled && (
+                                <div className="text-[10px] text-red-500 font-bold mt-0.5">
+                                  ✕ ครัวยกเลิกรายการนี้แล้ว
+                                </div>
+                              )}
                             </div>
 
-                            {/* แสดงข้อความแจ้งเตือนสีแดง */}
-                            {isItemCancelled && (
-                              <div className="text-[11px] text-red-600 font-bold mt-1.5 flex items-center gap-1">
-                                ✕ ครัวยกเลิกรายการนี้แล้ว
-                              </div>
-                            )}
+                            <div className={`font-bold ${isCancelled ? 'line-through text-red-400' : 'text-slate-700'}`}>
+                              ฿{item.price * item.quantity}
+                            </div>
                           </div>
                         );
                       })}
@@ -639,7 +608,7 @@ function MenuContent() {
                 </div>
               ))}
 
-              {/* ยอดรวมสุทธิหลังหักรายการที่ยกเลิกแล้ว */}
+              {/* ยอดรวมสุทธิหลังหักรายการที่ยกเลิกออก */}
               <div className="bg-amber-500 text-white p-4 rounded-2xl shadow-md flex justify-between items-center font-black">
                 <span>ยอดรวมทั้งหมดที่สั่งแล้ว</span>
                 <span className="text-xl">฿{totalSubmittedPrice}</span>
