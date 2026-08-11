@@ -25,6 +25,8 @@ interface SubmittedOrderItem {
   price: number;
   quantity: number;
   note: string;
+  status?: string; // รองรับสถานะรายรายการ เช่น 'cancelled'
+  isCancelled?: boolean;
 }
 
 interface SubmittedOrder {
@@ -48,19 +50,14 @@ function MenuContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // สถานะการเปลี่ยน Tab ด้านล่าง: 'menu' | 'cart' | 'bill'
   const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'bill'>('menu');
-
-  // สถานะการสั่งทานที่ร้าน / ซื้อกลับบ้าน
   const [orderType, setOrderType] = useState<'ทานที่ร้าน' | 'ซื้อกลับบ้าน'>('ทานที่ร้าน');
   const [customerContact, setCustomerContact] = useState<string>('');
 
-  // State สำหรับ Modal ป๊อปอัปเลือกเมนู
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [modalQuantity, setModalQuantity] = useState<number>(1);
   const [modalNote, setModalNote] = useState<string>('');
 
-  // รายการออเดอร์ที่สั่งเข้าครัวไปแล้ว (Active Orders)
   const [activeOrders, setActiveOrders] = useState<SubmittedOrder[]>([]);
 
   // 1. ดึงข้อมูลเมนูอาหารจาก Firebase
@@ -75,7 +72,7 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว (Realtime) - แก้ไขการ Mapping ป้องกันหน้าสรุปบิลค้าง
+  // 2. ดึงข้อมูลออเดอร์ที่โต๊ะนี้สั่งไปแล้ว
   useEffect(() => {
     const q = query(
       collection(db, 'orders'),
@@ -90,7 +87,6 @@ function MenuContent() {
             const data = doc.data();
             const isPaid = data.paymentStatus === 'paid' || data.isPaid === true;
 
-            // คืนค่าเฉพาะฟิลด์ที่ต้องการ ป้องกันปัญหาเกี่ยวกับ Firestore Timestamp Object
             return {
               id: doc.id,
               table: String(data.table || ''),
@@ -102,7 +98,8 @@ function MenuContent() {
               isPaid: isPaid,
             };
           })
-          .filter((order) => !order.isPaid); // ดึงเฉพาะออเดอร์ที่ยังไม่จ่ายเงิน
+          // 🎯 เงื่อนไข: ไม่เอาออเดอร์ที่จ่ายเงินแล้ว และ ไม่เอาออเดอร์ที่ถูกยกเลิกทั้งใบ
+          .filter((order) => !order.isPaid && order.status !== 'cancelled');
 
         setActiveOrders(fetchedOrders);
       },
@@ -114,26 +111,22 @@ function MenuContent() {
     return () => unsub();
   }, [tableParam]);
 
-  // คำนวณจำนวนรวมของเมนูนั้นๆ ในตะกร้า
   const getItemQuantityInCart = (itemId: string) => {
     return cart
       .filter((item) => item.id === itemId)
       .reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  // เปิด Modal เมื่อแตะเลือกเมนู
   const handleOpenModal = (item: MenuItem) => {
     setSelectedItem(item);
     setModalQuantity(1);
     setModalNote('');
   };
 
-  // ปิด Modal
   const handleCloseModal = () => {
     setSelectedItem(null);
   };
 
-  // ยืนยันเพิ่มลงตะกร้าจาก Modal
   const handleAddToCartFromModal = () => {
     if (!selectedItem) return;
 
@@ -162,7 +155,6 @@ function MenuContent() {
     handleCloseModal();
   };
 
-  // ปรับจำนวนรายการในตะกร้า
   const updateCartQuantity = (cartItemId: string, delta: number) => {
     setCart((prevCart) =>
       prevCart
@@ -177,7 +169,6 @@ function MenuContent() {
     );
   };
 
-  // ลดจำนวนรวมของเมนูบนการ์ดเมนู
   const handleDecreaseItemFromCard = (itemId: string) => {
     const itemsInCart = cart.filter((item) => item.id === itemId);
     if (itemsInCart.length === 0) return;
@@ -186,7 +177,6 @@ function MenuContent() {
     updateCartQuantity(targetCartItemId, -1);
   };
 
-  // เลื่อนหน้าจอไปยังหมวดหมู่ที่เลือก
   const handleCategoryClick = (cat: string) => {
     setSelectedCategory(cat);
     if (cat === 'ทั้งหมด') {
@@ -209,12 +199,15 @@ function MenuContent() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // คำนวณราคารวมของออเดอร์ที่สั่งแล้ว โดยข้ามรายการที่ถูกยกเลิก (cancelled)
-  const totalSubmittedPrice = activeOrders
-    .filter((order) => order.status !== 'cancelled')
-    .reduce((sum, order) => sum + (order.totalPrice || 0), 0);
+  // 🎯 คำนวณราคารวมโดยคำนึงถึงรายการย่อยที่ถูกยกเลิกด้วย
+  const totalSubmittedPrice = activeOrders.reduce((orderSum, order) => {
+    const validItemsTotal = order.items.reduce((itemSum, item) => {
+      const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
+      return isItemCancelled ? itemSum : itemSum + item.price * item.quantity;
+    }, 0);
+    return orderSum + validItemsTotal;
+  }, 0);
 
-  // ส่งออเดอร์เข้า Firestore
   const handleSendOrder = async () => {
     if (cart.length === 0) return;
 
@@ -235,6 +228,7 @@ function MenuContent() {
           price: item.price,
           quantity: item.quantity,
           note: item.note,
+          status: 'pending',
         })),
         totalPrice,
         status: 'pending',
@@ -256,7 +250,6 @@ function MenuContent() {
     }
   };
 
-  // ฟังก์ชันเรียกพนักงาน
   const handleCallStaff = async () => {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
       try {
@@ -341,7 +334,6 @@ function MenuContent() {
           )}
         </div>
 
-        {/* แถบหมวดหมู่อาหาร */}
         {activeTab === 'menu' && (
           <div className="bg-slate-100/90 backdrop-blur-xs border-t border-slate-200 px-3 py-1.5 overflow-x-auto flex gap-1.5 no-scrollbar">
             <div className="max-w-3xl mx-auto flex gap-1.5 w-full">
@@ -363,14 +355,13 @@ function MenuContent() {
         )}
       </header>
 
-      {/* แจ้งเตือนสั่งสำเร็จ */}
       {orderSuccess && (
         <div className="max-w-xl mx-auto p-3 m-3 bg-emerald-500 text-white text-center font-bold rounded-xl shadow-md animate-bounce text-xs">
           🎉 สั่งอาหารเรียบร้อยแล้ว! ห้องครัวกำลังจัดเตรียมอาหารให้ครับ
         </div>
       )}
 
-      {/* ================= TAB 1: รายการอาหาร (MENU) ================= */}
+      {/* ================= TAB 1: MENU ================= */}
       {activeTab === 'menu' && (
         <div className="max-w-3xl mx-auto p-3 space-y-6">
           {availableCategories.map((category) => {
@@ -470,7 +461,7 @@ function MenuContent() {
         </div>
       )}
 
-      {/* ================= TAB 2: ตะกร้าสินค้า (CART) ================= */}
+      {/* ================= TAB 2: CART ================= */}
       {activeTab === 'cart' && (
         <div className="max-w-2xl mx-auto p-4 animate-fade-in space-y-4">
           <h2 className="text-lg font-black text-slate-800 border-b pb-2 flex items-center gap-2">
@@ -541,73 +532,94 @@ function MenuContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              {activeOrders.map((order, idx) => {
-                const isCancelled = order.status === 'cancelled';
-
-                return (
-                  <div
-                    key={order.id}
-                    className={`bg-white p-4 rounded-2xl border shadow-xs space-y-2 transition ${
-                      isCancelled ? 'border-red-200 bg-red-50/20' : 'border-amber-200/80'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center text-xs font-bold border-b border-slate-100 pb-2">
-                      <span className={isCancelled ? 'text-slate-400 line-through' : 'text-amber-900'}>
-                        รอบการสั่งที่ {idx + 1} ({order.orderType})
-                      </span>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] ${
-                          isCancelled
-                            ? 'bg-red-100 text-red-700 font-bold'
-                            : order.status === 'pending'
-                            ? 'bg-amber-100 text-amber-800'
-                            : order.status === 'completed'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {isCancelled
-                          ? '❌ ยกเลิกแล้ว'
-                          : order.status === 'pending'
-                          ? '⏳ ส่งห้องครัวแล้ว'
+              {activeOrders.map((order, idx) => (
+                <div
+                  key={order.id}
+                  className="bg-white p-4 rounded-2xl border border-amber-200/80 shadow-xs space-y-3"
+                >
+                  <div className="flex justify-between items-center text-xs font-bold border-b border-slate-100 pb-2">
+                    <span className="text-amber-900">
+                      รอบการสั่งที่ {idx + 1} ({order.orderType})
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] ${
+                        order.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800'
                           : order.status === 'completed'
-                          ? '✅ เสิร์ฟแล้ว'
-                          : '🔥 กำลังปรุงอาหาร'}
-                      </span>
-                    </div>
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {order.status === 'pending'
+                        ? '⏳ ส่งห้องครัวแล้ว'
+                        : order.status === 'completed'
+                        ? '✅ เสิร์ฟแล้ว'
+                        : '🔥 กำลังปรุงอาหาร'}
+                    </span>
+                  </div>
 
-                    {/* รายการอาหารในออเดอร์ */}
-                    <ul className="space-y-1.5 text-xs">
-                      {order.items &&
-                        order.items.map((item, itemIdx) => (
-                          <li
+                  {/* รายการอาหารในออเดอร์ */}
+                  <div className="space-y-2 text-xs">
+                    {order.items &&
+                      order.items.map((item, itemIdx) => {
+                        // 🎯 เช็คว่าเมนูนี้โดนยกเลิกเฉพาะรายการหรือไม่
+                        const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
+
+                        return (
+                          <div
                             key={itemIdx}
-                            className={`flex justify-between ${
-                              isCancelled ? 'text-slate-400 line-through' : 'text-slate-700'
+                            className={`p-2.5 rounded-xl transition ${
+                              isItemCancelled
+                                ? 'bg-red-50/60 border border-red-100'
+                                : 'bg-slate-50/80 border border-slate-100'
                             }`}
                           >
-                            <div>
-                              <span className="font-bold">{item.name}</span>
-                              <span> x{item.quantity}</span>
-                              {item.note && (
+                            <div className="flex justify-between items-start">
+                              <div>
                                 <span
-                                  className={`block text-[10px] ${
-                                    isCancelled ? 'text-slate-400 line-through' : 'text-amber-700'
+                                  className={`font-bold ${
+                                    isItemCancelled
+                                      ? 'line-through text-red-400'
+                                      : 'text-slate-800'
                                   }`}
                                 >
-                                  📝 {item.note}
+                                  {item.name} x{item.quantity}
                                 </span>
-                              )}
+                                {item.note && (
+                                  <span
+                                    className={`block text-[10px] mt-0.5 ${
+                                      isItemCancelled
+                                        ? 'line-through text-red-300'
+                                        : 'text-amber-700 font-medium'
+                                    }`}
+                                  >
+                                    📝 {item.note}
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className={`font-bold ${
+                                  isItemCancelled
+                                    ? 'line-through text-red-400'
+                                    : 'text-slate-900'
+                                }`}
+                              >
+                                ฿{item.price * item.quantity}
+                              </span>
                             </div>
-                            <span className={`font-bold ${isCancelled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                              ฿{item.price * item.quantity}
-                            </span>
-                          </li>
-                        ))}
-                    </ul>
+
+                            {/* แสดงข้อความแจ้งเตือนสีแดงเหมือนหน้า Cashier */}
+                            {isItemCancelled && (
+                              <div className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1">
+                                ❌ ครัวยกเลิกรายการนี้แล้ว
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
-                );
-              })}
+                </div>
+              ))}
 
               <div className="bg-amber-500 text-white p-4 rounded-2xl shadow-md flex justify-between items-center font-black">
                 <span>ยอดรวมทั้งหมดที่สั่งแล้ว</span>
