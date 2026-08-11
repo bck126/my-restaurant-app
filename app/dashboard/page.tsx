@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '../firebase'; // ✅ ถูกต้อง (ถอยออกจาก dashboard ไปที่โฟลเดอร์ app)
+import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 
 interface OrderItem {
@@ -26,8 +26,11 @@ interface Order {
 export default function DashboardSales() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🎯 State สำหรับควบคุมแถบเมนูด้านล่างหัวข้อหลัก ('summary' | 'daily' | 'monthly')
+  const [reportTab, setReportTab] = useState<'summary' | 'daily' | 'monthly'>('summary');
 
-  // 1. ดึงข้อมูล orders แบบ Real-time ให้ตรงกับฝั่งแคชเชียร์และลูกค้า
+  // 1. ดึงข้อมูล orders แบบ Real-time
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
       const fetchedOrders: Order[] = snapshot.docs.map((doc) => {
@@ -53,8 +56,7 @@ export default function DashboardSales() {
     return <div className="p-6 text-center text-slate-500">กำลังโหลดข้อมูล Dashboard...</div>;
   }
 
-  // ================= 📊 2. คำนวณยอดขาย (กรองเฉพาะออเดอร์ที่จ่ายเงินแล้ว หรือสำเร็จแล้ว) =================
-  // สามารถปรับเงื่อนไขตรงนี้ได้ตามระบบการชำระเงินจริงของคุณ
+  // กรองเฉพาะออเดอร์ที่ชำระเงินแล้ว
   const paidOrders = orders.filter(
     (order) => order.isPaid || order.paymentStatus === 'paid'
   );
@@ -71,12 +73,51 @@ export default function DashboardSales() {
     })
     .reduce((sum, order) => sum + order.totalPrice, 0);
 
-  // ================= 🏆 3. คำนวณสินค้าที่ขายดีที่สุด =================
+  // ================= 📅 2. จัดกลุ่มยอดขายรายวัน =================
+  const dailySalesMap: Record<string, { dateStr: string; total: number; count: number }> = {};
+  paidOrders.forEach((order) => {
+    if (order.createdAt?.toDate) {
+      const dateObj = order.createdAt.toDate();
+      const dateKey = dateObj.toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+      if (!dailySalesMap[dateKey]) {
+        dailySalesMap[dateKey] = { dateStr: dateKey, total: 0, count: 0 };
+      }
+      dailySalesMap[dateKey].total += order.totalPrice;
+      dailySalesMap[dateKey].count += 1;
+    }
+  });
+  const dailySalesList = Object.values(dailySalesMap).sort((a, b) => {
+    // เรียงจากใหม่ไปเก่า (อาศัยเทียบข้อความหรือเพิ่ม timestamp จัดเรียง)
+    return new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime();
+  });
+
+  // ================= 🗓️ 3. จัดกลุ่มยอดขายรายเดือน =================
+  const monthlySalesMap: Record<string, { monthStr: string; total: number; count: number }> = {};
+  paidOrders.forEach((order) => {
+    if (order.createdAt?.toDate) {
+      const dateObj = order.createdAt.toDate();
+      const monthKey = dateObj.toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+      });
+      if (!monthlySalesMap[monthKey]) {
+        monthlySalesMap[monthKey] = { monthStr: monthKey, total: 0, count: 0 };
+      }
+      monthlySalesMap[monthKey].total += order.totalPrice;
+      monthlySalesMap[monthKey].count += 1;
+    }
+  });
+  const monthlySalesList = Object.values(monthlySalesMap);
+
+  // ================= 🏆 4. คำนวณสินค้าที่ขายดีที่สุด =================
   const productSalesMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
 
   paidOrders.forEach((order) => {
     order.items.forEach((item) => {
-      // ตรวจสอบว่าสินค้าไม่ถูกยกเลิก
       const isCancelled =
         item.itemStatus === 'cancelled' ||
         item.status === 'cancelled' ||
@@ -93,66 +134,172 @@ export default function DashboardSales() {
     });
   });
 
-  // แปลงเป็น Array และเรียงลำดับจากสินค้าที่ขายดีที่สุด (จำนวนมากที่สุด)
   const topProducts = Object.values(productSalesMap).sort((a, b) => b.quantity - a.quantity);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 bg-slate-50 min-h-screen">
       <h1 className="text-2xl font-black text-slate-800">📊 Dashboard ยอดขายและสินค้าขายดี</h1>
 
-      {/* การ์ดแสดงผลรวม */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-          <p className="text-xs font-bold text-slate-400">ยอดขายวันนี้</p>
-          <p className="text-3xl font-black text-amber-600 mt-1">฿{todayRevenue.toLocaleString()}</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-          <p className="text-xs font-bold text-slate-400">ยอดขายรวมทั้งหมด</p>
-          <p className="text-3xl font-black text-emerald-600 mt-1">฿{totalRevenue.toLocaleString()}</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-          <p className="text-xs font-bold text-slate-400">จำนวนบิลที่ชำระเงินแล้ว</p>
-          <p className="text-3xl font-black text-slate-700 mt-1">{paidOrders.length} บิล</p>
-        </div>
+      {/* 🎯 แถบบาร์สลับมุมมองรายงาน */}
+      <div className="bg-white p-1.5 rounded-2xl shadow-xs border border-slate-200 flex gap-2 max-w-md">
+        <button
+          onClick={() => setReportTab('summary')}
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+            reportTab === 'summary'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          📈 สรุปภาพรวม
+        </button>
+        <button
+          onClick={() => setReportTab('daily')}
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+            reportTab === 'daily'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          📅 รายวันตามวันที่
+        </button>
+        <button
+          onClick={() => setReportTab('monthly')}
+          className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+            reportTab === 'monthly'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          🗓️ รายเดือนแยกเป็นเดือน
+        </button>
       </div>
 
-      {/* ตารางสินค้าขายดี */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
-        <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-          🔥 10 อันดับ สินค้าขายดี
-        </h2>
+      {/* ================= TAB 1: สรุปภาพรวม ================= */}
+      {reportTab === 'summary' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* การ์ดแสดงผลรวม */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <p className="text-xs font-bold text-slate-400">ยอดขายวันนี้</p>
+              <p className="text-3xl font-black text-amber-600 mt-1">฿{todayRevenue.toLocaleString()}</p>
+            </div>
 
-        {topProducts.length === 0 ? (
-          <p className="text-slate-400 text-xs py-8 text-center">ยังไม่มีข้อมูลการขาย</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
-                <tr>
-                  <th className="p-3 rounded-l-xl">อันดับ</th>
-                  <th className="p-3">ชื่อสินค้า</th>
-                  <th className="p-3 text-center">จำนวนที่ขายได้</th>
-                  <th className="p-3 text-right rounded-r-xl">รายได้รวม</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {topProducts.slice(0, 10).map((prod, index) => (
-                  <tr key={prod.name} className="hover:bg-slate-50/80 transition">
-                    <td className="p-3 font-bold text-slate-500">
-                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                    </td>
-                    <td className="p-3 font-bold text-slate-800">{prod.name}</td>
-                    <td className="p-3 text-center font-black text-amber-600">{prod.quantity} หน่วย</td>
-                    <td className="p-3 text-right font-black text-slate-700">฿{prod.revenue.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <p className="text-xs font-bold text-slate-400">ยอดขายรวมทั้งหมด</p>
+              <p className="text-3xl font-black text-emerald-600 mt-1">฿{totalRevenue.toLocaleString()}</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <p className="text-xs font-bold text-slate-400">จำนวนบิลที่ชำระเงินแล้ว</p>
+              <p className="text-3xl font-black text-slate-700 mt-1">{paidOrders.length} บิล</p>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* ตารางสินค้าขายดี */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+              🔥 10 อันดับ สินค้าขายดี
+            </h2>
+
+            {topProducts.length === 0 ? (
+              <p className="text-slate-400 text-xs py-8 text-center">ยังไม่มีข้อมูลการขาย</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
+                    <tr>
+                      <th className="p-3 rounded-l-xl">อันดับ</th>
+                      <th className="p-3">ชื่อสินค้า</th>
+                      <th className="p-3 text-center">จำนวนที่ขายได้</th>
+                      <th className="p-3 text-right rounded-r-xl">รายได้รวม</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {topProducts.slice(0, 10).map((prod, index) => (
+                      <tr key={prod.name} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3 font-bold text-slate-500">
+                          {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                        </td>
+                        <td className="p-3 font-bold text-slate-800">{prod.name}</td>
+                        <td className="p-3 text-center font-black text-amber-600">{prod.quantity} หน่วย</td>
+                        <td className="p-3 text-right font-black text-slate-700">฿{prod.revenue.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 2: รายวันตามวันที่ ================= */}
+      {reportTab === 'daily' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4 animate-fade-in">
+          <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+            📅 ยอดขายรายวัน (แยกตามวันที่)
+          </h2>
+
+          {dailySalesList.length === 0 ? (
+            <p className="text-slate-400 text-xs py-8 text-center">ยังไม่มีข้อมูลยอดขายรายวัน</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
+                  <tr>
+                    <th className="p-3 rounded-l-xl">วันที่</th>
+                    <th className="p-3 text-center">จำนวนบิลที่ชำระแล้ว</th>
+                    <th className="p-3 text-right rounded-r-xl">ยอดขายรวม</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dailySalesList.map((item) => (
+                    <tr key={item.dateStr} className="hover:bg-slate-50/80 transition">
+                      <td className="p-3 font-bold text-slate-800">{item.dateStr}</td>
+                      <td className="p-3 text-center font-semibold text-slate-600">{item.count} บิล</td>
+                      <td className="p-3 text-right font-black text-amber-600">฿{item.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================= TAB 3: รายเดือนแยกเป็นเดือน ================= */}
+      {reportTab === 'monthly' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4 animate-fade-in">
+          <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+            🗓️ ยอดขายรายเดือน (แยกเป็นเดือน)
+          </h2>
+
+          {monthlySalesList.length === 0 ? (
+            <p className="text-slate-400 text-xs py-8 text-center">ยังไม่มีข้อมูลยอดขายรายเดือน</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-600 font-bold uppercase">
+                  <tr>
+                    <th className="p-3 rounded-l-xl">เดือน</th>
+                    <th className="p-3 text-center">จำนวนบิลที่ชำระแล้ว</th>
+                    <th className="p-3 text-right rounded-r-xl">ยอดขายรวม</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {monthlySalesList.map((item) => (
+                    <tr key={item.monthStr} className="hover:bg-slate-50/80 transition">
+                      <td className="p-3 font-bold text-slate-800">{item.monthStr}</td>
+                      <td className="p-3 text-center font-semibold text-slate-600">{item.count} บิล</td>
+                      <td className="p-3 text-right font-black text-emerald-600">฿{item.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
