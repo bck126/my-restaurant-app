@@ -31,7 +31,7 @@ interface SubmittedOrderItem {
 
 interface SubmittedOrder {
   id: string;
-  table: string;
+  table: string | number;
   orderType: string;
   items: SubmittedOrderItem[];
   totalPrice: number;
@@ -39,6 +39,21 @@ interface SubmittedOrder {
   paymentStatus?: string;
   isPaid?: boolean;
 }
+
+// ฟังก์ชันช่วยเช็กว่ารายการย่อยนี้ถูกยกเลิกหรือไม่ (ครอบคลุมทุกเคส)
+const checkIsItemCancelled = (item: SubmittedOrderItem): boolean => {
+  if (!item) return false;
+  if (item.isCancelled === true) return true;
+  if (!item.status) return false;
+  
+  const statusLower = String(item.status).toLowerCase().trim();
+  return (
+    statusLower === 'cancelled' ||
+    statusLower === 'cancel' ||
+    statusLower === 'ยกเลิก' ||
+    statusLower === 'void'
+  );
+};
 
 function MenuContent() {
   const searchParams = useSearchParams();
@@ -60,7 +75,7 @@ function MenuContent() {
 
   const [activeOrders, setActiveOrders] = useState<SubmittedOrder[]>([]);
 
-  // 1. ดึงข้อมูลเมนูอาหารจาก Firebase
+  // 1. ดึงข้อมูลเมนูอาหาร
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'menu'), (snapshot) => {
       const items: MenuItem[] = snapshot.docs.map((doc) => ({
@@ -72,40 +87,45 @@ function MenuContent() {
     return () => unsub();
   }, []);
 
-  // 2. ดึงข้อมูลออเดอร์ที่สั่งไปแล้ว
+  // 2. ดึงข้อมูลออเดอร์ของโต๊ะนี้ (รองรับทั้ง String และ Number)
   useEffect(() => {
-    const q = query(
-      collection(db, 'orders'),
-      where('table', '==', String(tableParam))
-    );
+    const stringTable = String(tableParam);
+    const numberTable = Number(tableParam);
 
-    const unsub = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedOrders: SubmittedOrder[] = snapshot.docs
-          .map((doc) => {
-            const data = doc.data();
-            const isPaid = data.paymentStatus === 'paid' || data.isPaid === true;
+    const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      const fetchedOrders: SubmittedOrder[] = snapshot.docs
+        .map((doc) => {
+          const data = doc.data();
+          const isPaid = data.paymentStatus === 'paid' || data.isPaid === true;
 
-            return {
-              id: doc.id,
-              table: String(data.table || ''),
-              orderType: data.orderType || 'ทานที่ร้าน',
-              items: Array.isArray(data.items) ? data.items : [],
-              totalPrice: Number(data.totalPrice) || 0,
-              status: data.status || 'pending',
-              paymentStatus: data.paymentStatus || 'unpaid',
-              isPaid: isPaid,
-            };
-          })
-          .filter((order) => !order.isPaid && order.status !== 'cancelled');
+          return {
+            id: doc.id,
+            table: data.table,
+            orderType: data.orderType || 'ทานที่ร้าน',
+            items: Array.isArray(data.items) ? data.items : [],
+            totalPrice: Number(data.totalPrice) || 0,
+            status: data.status || 'pending',
+            paymentStatus: data.paymentStatus || 'unpaid',
+            isPaid: isPaid,
+          };
+        })
+        .filter((order) => {
+          // เช็กเลขโต๊ะตรงกันหรือไม่ (ไม่ว่าจะเก็บเป็น string หรือ number)
+          const isSameTable =
+            String(order.table) === stringTable || order.table === numberTable;
+          
+          // ไม่เอาออเดอร์ที่จ่ายเงินแล้ว หรือยกเลิกทั้งใบออเดอร์
+          const orderStatusLower = String(order.status).toLowerCase();
+          const isOrderCancelled =
+            orderStatusLower === 'cancelled' ||
+            orderStatusLower === 'cancel' ||
+            orderStatusLower === 'ยกเลิก';
 
-        setActiveOrders(fetchedOrders);
-      },
-      (error) => {
-        console.error('Error fetching active orders:', error);
-      }
-    );
+          return isSameTable && !order.isPaid && !isOrderCancelled;
+        });
+
+      setActiveOrders(fetchedOrders);
+    });
 
     return () => unsub();
   }, [tableParam]);
@@ -198,11 +218,11 @@ function MenuContent() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 🎯 คำนวณราคารวมใหม่ โดยไม่รวมรายการที่ถูกยกเลิก (item.status === 'cancelled' หรือ item.isCancelled === true)
+  // 🎯 คำนวณราคารวมใหม่ หักรายการที่ยกเลิกออกโดยอัตโนมัติ
   const totalSubmittedPrice = activeOrders.reduce((orderSum, order) => {
     const validItemsTotal = order.items.reduce((itemSum, item) => {
-      const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
-      return isItemCancelled ? itemSum : itemSum + item.price * item.quantity;
+      const isCancelled = checkIsItemCancelled(item);
+      return isCancelled ? itemSum : itemSum + item.price * item.quantity;
     }, 0);
     return orderSum + validItemsTotal;
   }, 0);
@@ -561,15 +581,14 @@ function MenuContent() {
                   <div className="space-y-2 text-xs">
                     {order.items &&
                       order.items.map((item, itemIdx) => {
-                        // 🎯 ตรวจสอบสถานะการยกเลิกของรายการย่อย
-                        const isItemCancelled = item.status === 'cancelled' || item.isCancelled === true;
+                        const isItemCancelled = checkIsItemCancelled(item);
 
                         return (
                           <div
                             key={itemIdx}
                             className={`p-3 rounded-xl border transition ${
                               isItemCancelled
-                                ? 'bg-red-50/70 border-red-200/60'
+                                ? 'bg-red-50 border-red-200'
                                 : 'bg-slate-50/80 border-slate-100'
                             }`}
                           >
@@ -578,7 +597,7 @@ function MenuContent() {
                                 <span
                                   className={`font-bold text-sm ${
                                     isItemCancelled
-                                      ? 'line-through text-red-400'
+                                      ? 'line-through text-red-500'
                                       : 'text-slate-800'
                                   }`}
                                 >
@@ -588,7 +607,7 @@ function MenuContent() {
                                   <span
                                     className={`block text-[11px] mt-0.5 ${
                                       isItemCancelled
-                                        ? 'line-through text-red-300'
+                                        ? 'line-through text-red-400'
                                         : 'text-amber-700 font-medium'
                                     }`}
                                   >
@@ -599,7 +618,7 @@ function MenuContent() {
                               <span
                                 className={`font-bold ${
                                   isItemCancelled
-                                    ? 'line-through text-red-400'
+                                    ? 'line-through text-red-500'
                                     : 'text-slate-900'
                                 }`}
                               >
@@ -607,9 +626,9 @@ function MenuContent() {
                               </span>
                             </div>
 
-                            {/* 🎯 แสดงป้ายแจ้งเตือนสีแดงสำหรับรายการที่ยกเลิก ให้ตรงกับฝั่ง Cashier */}
+                            {/* แสดงข้อความแจ้งเตือนสีแดง */}
                             {isItemCancelled && (
-                              <div className="text-[11px] text-red-500 font-bold mt-1.5 flex items-center gap-1">
+                              <div className="text-[11px] text-red-600 font-bold mt-1.5 flex items-center gap-1">
                                 ✕ ครัวยกเลิกรายการนี้แล้ว
                               </div>
                             )}
