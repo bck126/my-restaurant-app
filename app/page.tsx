@@ -568,28 +568,47 @@ function MenuContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              {activeOrders.map((order, idx) => (
-                <div key={order.id} className="bg-white p-4 rounded-2xl border border-amber-200/80 shadow-xs space-y-2">
-                  <div className="flex justify-between items-center text-xs font-bold text-amber-900 border-b border-slate-100 pb-2">
-                    <span>รอบการสั่งที่ {idx + 1} ({order.orderType})</span>
-                    <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px]">
-                      {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : order.status === 'completed' ? '✅ เสิร์ฟแล้ว' : '🔥 กำลังปรุงอาหาร'}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-xs">
-                    {order.items.map((item, itemIdx) => (
-                      <li key={itemIdx} className="flex justify-between text-slate-700">
-                        <div>
-                          <span className="font-bold">{item.name}</span>
-                          <span className="text-slate-500"> x{item.quantity}</span>
-                          {item.note && <span className="text-amber-700 block text-[10px]">📝 {item.note}</span>}
-                        </div>
-                        <span className="font-bold text-slate-900">฿{item.price * item.quantity}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              <div key={order.id} className="bg-white p-4 rounded-2xl border border-amber-200/80 shadow-xs space-y-2">
+  <div className="flex justify-between items-center text-xs font-bold text-amber-900 border-b border-slate-100 pb-2">
+    <span>รอบการสั่งที่ {idx + 1} ({order.orderType})</span>
+    <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px]">
+      {order.status === 'pending' ? '⏳ ส่งห้องครัวแล้ว' : order.status === 'completed' ? '✅ เสิร์ฟแล้ว' : '🔥 กำลังปรุงอาหาร'}
+    </span>
+  </div>
+
+  {/* วางโค้ดใหม่แทนที่ <ul> เดิมตรงนี้ */}
+  {order.items.map((item: any, idx: number) => {
+    const isCancelled = item.itemStatus === 'cancelled';
+
+    return (
+      <div
+        key={idx}
+        className={`flex justify-between items-center p-3 rounded-xl border text-sm ${
+          isCancelled
+            ? 'bg-red-50 border-red-200 text-slate-400'
+            : 'bg-slate-50 border-slate-200 text-slate-800'
+        }`}
+      >
+        <div>
+          <span className={`font-bold ${isCancelled ? 'line-through text-slate-400' : ''}`}>
+            {item.name}
+          </span>
+          <span className="ml-1 text-xs text-slate-500">x{item.quantity}</span>
+          
+          {isCancelled && (
+            <span className="block text-xs font-bold text-red-500 mt-0.5">
+              ✕ (รายการนี้ถูกยกเลิก/หมด)
+            </span>
+          )}
+        </div>
+
+        <div className={`font-bold ${isCancelled ? 'line-through text-slate-400' : 'text-amber-600'}`}>
+          ฿{item.price * item.quantity}
+        </div>
+      </div>
+    );
+  })}
+</div>
 
               <div className="bg-amber-500 text-white p-4 rounded-2xl shadow-md flex justify-between items-center font-black">
                 <span>ยอดรวมทั้งหมดที่สั่งแล้ว</span>
