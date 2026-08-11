@@ -189,7 +189,7 @@ export default function DashboardSales() {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          📅 รายวันตามวันที่
+          📅 รายวัน
         </button>
         <button
           onClick={() => setReportTab('monthly')}
@@ -199,7 +199,7 @@ export default function DashboardSales() {
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
-          🗓️ รายเดือนแยกเป็นเดือน
+          🗓️ รายเดือน
         </button>
       </div>
 
