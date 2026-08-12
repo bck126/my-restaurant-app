@@ -4,12 +4,18 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase'; // ✅ ถอย 1 ระดับจะเจอ app/firebase.ts
 import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 
+interface Addon {
+  name: string;
+  price: number;
+}
+
 interface OrderItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
   note?: string;
+  selectedAddons?: Addon[]; // 🥗 เพิ่มการรองรับข้อมูลเครื่องเคียง
   itemStatus?: 'pending' | 'done' | 'cancelled';
 }
 
@@ -34,7 +40,6 @@ export default function KitchenPage() {
   const playSingleChime = (ctx: AudioContext, startTime: number) => {
     const duration = 0.45; // ความยาวต่อ 1 เสียงกริ๊ง (ลากยาว)
 
-    // ใช้ Oscillator 2 ตัวผสมความถี่คู่เพื่อสร้างเสียงกริ๊งสว่างใสและแหลมแทรกหู
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -42,21 +47,18 @@ export default function KitchenPage() {
     osc1.type = 'triangle';
     osc2.type = 'sine';
 
-    // ความถี่เสียงสูงสะดุดหู (2000Hz + 2400Hz)
     osc1.frequency.setValueAtTime(2000, ctx.currentTime + startTime);
     osc2.frequency.setValueAtTime(2400, ctx.currentTime + startTime);
 
-    // ใส่ Tremolo (การรัวของเสียงกระดิ่ง)
     const lfo = ctx.createOscillator();
     const lfoGain = ctx.createGain();
-    lfo.frequency.setValueAtTime(30, ctx.currentTime + startTime); // สั่นรัว 30 รอบ/วิ
+    lfo.frequency.setValueAtTime(30, ctx.currentTime + startTime);
     lfoGain.gain.setValueAtTime(0.5, ctx.currentTime + startTime);
     lfo.connect(lfoGain);
     lfoGain.connect(gain.gain);
     lfo.start(ctx.currentTime + startTime);
     lfo.stop(ctx.currentTime + startTime + duration);
 
-    // ปรับเร่ง Volume ความดังระดับสูงสุด (Gain = 1.0)
     gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
 
@@ -70,7 +72,7 @@ export default function KitchenPage() {
     osc2.stop(ctx.currentTime + startTime + duration);
   };
 
-  // 🔊 ฟังก์ชันควบคุมจังหวะ: 3 ครั้ง - เว้น - 3 ครั้ง - เว้น - 3 ครั้ง
+  // 🔊 ฟังก์ชันควบคุมจังหวะเสียงเตือน
   const playSuperLoudAlarm = () => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -83,16 +85,9 @@ export default function KitchenPage() {
         ctx.resume();
       }
 
-      // โครงสร้างเวลาการดังแบบ 3 ชุด (ชุดละ 3 ครั้ง)
-      // ชุดที่ 1: 0.0s, 0.5s, 1.0s
-      // ชุดที่ 2: 2.0s, 2.5s, 3.0s (เว้นช่วงจากชุดแรก 1 วินาที)
-      // ชุดที่ 3: 4.0s, 4.5s, 5.0s (เว้นช่วงจากชุดสอง 1 วินาที)
       const pattern = [
-        // ชุดที่ 1 (3 ครั้ง)
         0.0, 0.5, 1.0,
-        // ชุดที่ 2 (3 ครั้ง)
         2.0, 2.5, 3.0,
-        // ชุดที่ 3 (3 ครั้ง)
         4.0, 4.5, 5.0,
       ];
 
@@ -107,10 +102,10 @@ export default function KitchenPage() {
   // ปุ่มเปิดใช้งานเสียง
   const handleEnableAudio = () => {
     setIsAudioAllowed(true);
-    playSuperLoudAlarm(); // ทดสอบเล่นเสียงทันทีเมื่อกดเปิด
+    playSuperLoudAlarm();
   };
 
-  // ดึงรายการออเดอร์ Realtime และสั่งเสียงเตือนเมื่อมีออเดอร์ใหม่
+  // ดึงรายการออเดอร์ Realtime
   useEffect(() => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'asc'));
 
@@ -313,12 +308,31 @@ export default function KitchenPage() {
                             <div className="font-bold text-slate-800 text-sm">
                               {item.name} <span className="text-amber-600 font-black">x{item.quantity}</span>
                             </div>
+
+                            {/* 🥗 แสดงรายการเครื่องเคียงเพิ่มเติม */}
+                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                              <div className="mt-1 bg-amber-50 p-1.5 rounded-lg border border-amber-200/60">
+                                <span className="text-[11px] font-bold text-amber-800 block">
+                                  🥗 เครื่องเคียงเพิ่มเติม:
+                                </span>
+                                <ul className="list-disc list-inside text-[11px] text-amber-900 font-semibold pl-1">
+                                  {item.selectedAddons.map((addon, aIdx) => (
+                                    <li key={aIdx}>
+                                      {addon.name} <span className="text-amber-700 font-normal">(+฿{addon.price})</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* 📝 แสดงข้อความรายละเอียดเพิ่มเติม */}
                             {item.note && (
-                              <div className="text-amber-700 text-[11px] font-medium mt-0.5">
+                              <div className="text-amber-700 text-[11px] font-medium mt-1">
                                 📝 {item.note}
                               </div>
                             )}
-                            <div className="text-slate-400 text-[10px]">฿{item.price * item.quantity}</div>
+
+                            <div className="text-slate-400 text-[10px] mt-0.5">฿{item.price * item.quantity}</div>
                           </div>
 
                           {!isCancelled ? (
