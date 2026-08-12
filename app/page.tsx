@@ -1,5 +1,5 @@
 'use client';
-
+import MenuItemSelector from './MenuItemSelector';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from './firebase';
