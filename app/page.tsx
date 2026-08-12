@@ -1,5 +1,5 @@
 'use client';
-import MenuItemSelector from './MenuItemSelector';
+import MenuItemSelector, { Addon } from './MenuItemSelector';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from './firebase';
@@ -11,12 +11,18 @@ interface MenuItem {
   price: number;
   category: string;
   imageUrl?: string;
+  addons?: Addon[];
 }
 
-interface CartItem extends MenuItem {
+interface CartItem {
+  id: string;
   cartItemId: string;
+  name: string;
+  price: number;
+  basePrice: number;
   quantity: number;
   note: string;
+  selectedAddons?: Addon[];
 }
 
 interface SubmittedOrderItem {
@@ -28,6 +34,7 @@ interface SubmittedOrderItem {
   status?: string;
   itemStatus?: string;
   isCancelled?: boolean;
+  selectedAddons?: Addon[];
 }
 
 interface SubmittedOrder {
@@ -66,8 +73,6 @@ function MenuContent() {
   const [customerContact, setCustomerContact] = useState<string>('');
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [modalQuantity, setModalQuantity] = useState<number>(1);
-  const [modalNote, setModalNote] = useState<string>('');
 
   const [activeOrders, setActiveOrders] = useState<SubmittedOrder[]>([]);
 
@@ -127,34 +132,47 @@ function MenuContent() {
 
   const handleOpenModal = (item: MenuItem) => {
     setSelectedItem(item);
-    setModalQuantity(1);
-    setModalNote('');
   };
 
   const handleCloseModal = () => {
     setSelectedItem(null);
   };
 
-  const handleAddToCartFromModal = () => {
+  // 🎯 รับข้อมูลจาก MenuItemSelector และบันทึกลง ตะกร้า
+  const handleAddToCartFromSelector = (orderData: {
+    selectedAddons: Addon[];
+    totalPrice: number;
+    quantity: number;
+    note?: string;
+  }) => {
     if (!selectedItem) return;
 
-    const cartItemId = `${selectedItem.id}-${modalNote.trim()}`;
+    const addonsText = orderData.selectedAddons.map((a) => a.name).sort().join(',');
+    const noteText = orderData.note ? orderData.note.trim() : '';
+    const cartItemId = `${selectedItem.id}-${addonsText}-${noteText}`;
+
+    // คำนวณราคาต่อหน่วย (รากฐาน + Addons)
+    const unitPrice = orderData.totalPrice / orderData.quantity;
 
     setCart((prevCart) => {
       const existingIndex = prevCart.findIndex((item) => item.cartItemId === cartItemId);
 
       if (existingIndex > -1) {
         const newCart = [...prevCart];
-        newCart[existingIndex].quantity += modalQuantity;
+        newCart[existingIndex].quantity += orderData.quantity;
         return newCart;
       } else {
         return [
           ...prevCart,
           {
-            ...selectedItem,
+            id: selectedItem.id,
             cartItemId,
-            quantity: modalQuantity,
-            note: modalNote.trim(),
+            name: selectedItem.name,
+            basePrice: selectedItem.price,
+            price: unitPrice,
+            quantity: orderData.quantity,
+            note: noteText,
+            selectedAddons: orderData.selectedAddons,
           },
         ];
       }
@@ -236,6 +254,7 @@ function MenuContent() {
           price: item.price,
           quantity: item.quantity,
           note: item.note,
+          selectedAddons: item.selectedAddons || [],
           status: 'pending',
           itemStatus: 'pending',
         })),
@@ -443,7 +462,7 @@ function MenuContent() {
                           <div className="cursor-pointer" onClick={() => handleOpenModal(item)}>
                             <h3 className="font-bold text-slate-800 text-sm">{item.name}</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                              {isSelected ? 'แตะเพิ่มโน้ต/จำนวนเพิ่ม' : 'แตะเพื่อระบุโน้ต/สั่งซื้อ'}
+                              {isSelected ? 'แตะเพิ่มเครื่องเคียง/จำนวนเพิ่ม' : 'แตะเพื่อเลือกเครื่องเคียง/ระบุโน้ต'}
                             </p>
                           </div>
 
@@ -517,7 +536,16 @@ function MenuContent() {
                   <div key={item.cartItemId} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
                     <div>
                       <span className="font-bold text-slate-800 text-sm">{item.name}</span>
-                      {item.note && <span className="text-amber-600 font-medium block text-[11px] mt-0.5">📝 {item.note}</span>}
+                      
+                      {/* แสดงรายการเครื่องเคียงที่เลือก */}
+                      {item.selectedAddons && item.selectedAddons.length > 0 && (
+                        <div className="text-amber-700 font-medium text-[11px] mt-0.5">
+                          ➕ {item.selectedAddons.map((a) => `${a.name} (+฿${a.price})`).join(', ')}
+                        </div>
+                      )}
+
+                      {item.note && <span className="text-slate-500 font-medium block text-[11px] mt-0.5">📝 {item.note}</span>}
+                      
                       <span className="text-slate-500 block text-xs mt-0.5">
                         ฿{item.price} x {item.quantity} = ฿{item.price * item.quantity}
                       </span>
@@ -611,6 +639,14 @@ function MenuContent() {
                               <div className={`font-bold ${isCancelled ? 'line-through' : ''}`}>
                                 {item.name} <span className="font-black">x{item.quantity}</span>
                               </div>
+
+                              {/* แสดงรายการเครื่องเคียงในบิล */}
+                              {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                <div className={`text-[10px] ${isCancelled ? 'line-through text-red-300' : 'text-amber-700'}`}>
+                                  ➕ {item.selectedAddons.map((a) => a.name).join(', ')}
+                                </div>
+                              )}
+
                               {item.note && (
                                 <div className={`text-[10px] ${isCancelled ? 'line-through text-red-300' : 'text-amber-600'}`}>
                                   📝 {item.note}
@@ -651,48 +687,25 @@ function MenuContent() {
         </div>
       )}
 
-      {/* Modal ระบุโน้ตอาหาร */}
+      {/* Modal ระบุท็อปปิ้ง/เครื่องเคียง และ โน้ตอาหาร */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">{selectedItem.name}</h3>
-                <p className="text-amber-600 font-black text-base">฿{selectedItem.price}</p>
-              </div>
-              <button onClick={handleCloseModal} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full font-bold flex items-center justify-center text-sm">
-                ✕
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">✍️ รายละเอียดเพิ่มเติม / โน้ตกำกับ</label>
-              <input
-                type="text"
-                placeholder="เช่น ไม่เผ็ด, ไม่ใส่ผัก, ขอรสหวาน"
-                value={modalNote}
-                onChange={(e) => setModalNote(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs font-bold text-slate-700">จำนวนที่ต้องการเพิ่ม</span>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setModalQuantity((q) => Math.max(1, q - 1))} className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base">
-                  -
-                </button>
-                <span className="font-black text-base text-slate-900 w-5 text-center">{modalQuantity}</span>
-                <button onClick={() => setModalQuantity((q) => q + 1)} className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-700 text-base">
-                  +
-                </button>
-              </div>
-            </div>
-
-            <button onClick={handleAddToCartFromModal} className="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold py-3 rounded-xl shadow-md transition text-xs flex justify-between px-5">
-              <span>เพิ่มลงตะกร้า</span>
-              <span>฿{selectedItem.price * modalQuantity}</span>
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-3 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={handleCloseModal}
+              className="absolute top-4 right-4 z-10 w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full font-bold flex items-center justify-center text-sm"
+            >
+              ✕
             </button>
+
+            <MenuItemSelector
+              item={{
+                name: selectedItem.name,
+                basePrice: selectedItem.price,
+                addons: selectedItem.addons || [],
+              }}
+              onAddToCart={handleAddToCartFromSelector}
+            />
           </div>
         </div>
       )}

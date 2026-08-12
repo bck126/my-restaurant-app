@@ -8,16 +8,24 @@ export interface Addon {
 }
 
 export interface MenuItem {
+  id?: string;
   name: string;
   basePrice: number;
   addons?: Addon[];
 }
 
+// อัปเดต Interface รองรับ onAddToCart
 interface MenuItemSelectorProps {
   item: MenuItem;
+  onAddToCart?: (orderData: {
+    selectedAddons: Addon[];
+    totalPrice: number;
+    quantity: number;
+    note?: string;
+  }) => void;
 }
 
-export default function MenuItemSelector({ item }: MenuItemSelectorProps) {
+export default function MenuItemSelector({ item, onAddToCart }: MenuItemSelectorProps) {
   // 🎯 เก็บข้อมูลแบบ Array พร้อมระบุประเภท Addon[]
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([]);
 
@@ -39,14 +47,18 @@ export default function MenuItemSelector({ item }: MenuItemSelectorProps) {
   const totalPrice = (item?.basePrice || 0) + addonsTotal;
 
   const addToCart = () => {
-    const orderItem = {
-      name: item?.name,
-      basePrice: item?.basePrice,
+    const orderData = {
       selectedAddons: selectedAddons,
       totalPrice: totalPrice,
-      quantity: 1
+      quantity: 1,
     };
-    console.log("ส่งรายการสั่งซื้อ:", orderItem);
+
+    // ส่งค่ากลับไปยัง parent component ผ่าน props onAddToCart
+    if (onAddToCart) {
+      onAddToCart(orderData);
+    } else {
+      console.log("ส่งรายการสั่งซื้อ:", orderData);
+    }
   };
 
   if (!item) return null;
