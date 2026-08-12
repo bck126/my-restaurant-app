@@ -324,8 +324,11 @@ function MenuContent() {
   const availableCategories = Array.from(new Set(menuItems.map((i) => i.category || 'ทั่วไป')));
   const categoriesNav = ['ทั้งหมด', ...availableCategories];
 
+  // 🔤 เพิ่มการเรียงลำดับตัวอักษรภาษาไทย ก-ฮ ในแต่ละหมวดหมู่
   const groupedMenuItems = availableCategories.reduce((acc, category) => {
-    acc[category] = menuItems.filter((i) => (i.category || 'ทั่วไป') === category);
+    acc[category] = menuItems
+      .filter((i) => (i.category || 'ทั่วไป') === category)
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
     return acc;
   }, {} as Record<string, MenuItem[]>);
 
