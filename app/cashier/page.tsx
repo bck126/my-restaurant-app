@@ -2,10 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-// ... import อื่นๆ ที่มีอยู่แล้ว ...
 import Link from 'next/link';
 import { db } from '../firebase'; 
 import { collection, onSnapshot, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
+
+interface Addon {
+  name: string;
+  price: number;
+}
 
 interface OrderItem {
   name: string;
@@ -13,6 +17,7 @@ interface OrderItem {
   quantity: number;
   itemStatus?: string;
   note?: string;
+  selectedAddons?: Addon[]; // 🥗 เพิ่มการรองรับข้อมูลเครื่องเคียง
 }
 
 interface Order {
@@ -44,6 +49,7 @@ export default function CashierPage() {
       router.push('/login');
     }
   }, [router]);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeCalls, setActiveCalls] = useState<ServiceCall[]>([]);
   const [isAudioAllowed, setIsAudioAllowed] = useState(false);
@@ -127,10 +133,10 @@ export default function CashierPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. ดึงรายการ "เรียกพนักงาน" จาก collection 'notifications' ให้ตรงกับฝั่งลูกค้า
+  // 2. ดึงรายการ "เรียกพนักงาน" จาก collection 'notifications'
   useEffect(() => {
     const qCall = query(
-      collection(db, 'notifications'), // 👈 เปลี่ยนจาก serviceCalls เป็น notifications
+      collection(db, 'notifications'),
       where('status', '==', 'pending')
     );
 
@@ -157,7 +163,7 @@ export default function CashierPage() {
     return () => unsubscribeCalls();
   }, []);
 
-  // ฟังก์ชันกดรับทราบการเรียกพนักงาน (ปิดการเรียกของโต๊ะนั้น)
+  // ฟังก์ชันกดรับทราบการเรียกพนักงาน
   const handleResolveCall = async (callId: string) => {
     try {
       const callRef = doc(db, 'notifications', callId);
@@ -194,7 +200,7 @@ export default function CashierPage() {
   return (
     <main className="p-6 bg-slate-100 min-h-screen relative">
       
-      {/* 🚨 POPUP แจ้งเตือนเรียกพนักงาน (เด้งซ้อนบนสุด) */}
+      {/* 🚨 POPUP แจ้งเตือนเรียกพนักงาน */}
       {activeCalls.length > 0 && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border-4 border-amber-500 text-center animate-bounce-short">
@@ -301,27 +307,46 @@ export default function CashierPage() {
 
                   {/* รายการอาหาร */}
                   <div className="p-3 space-y-2">
-                    {order.items.map((item: any, idx: number) => {
+                    {order.items.map((item: OrderItem, idx: number) => {
                       const isCancelled = item.itemStatus === 'cancelled';
 
                       return (
                         <div
                           key={idx}
-                          className={`flex justify-between items-center p-2.5 rounded-xl border text-xs transition ${
+                          className={`flex justify-between items-start p-2.5 rounded-xl border text-xs transition ${
                             isCancelled
                               ? 'bg-red-50 border-red-200 text-red-400 opacity-70'
-                              : 'bg-white border-slate-200 text-slate-800'
+                              : 'bg-slate-50 border-slate-200 text-slate-800'
                           }`}
                         >
-                          <div>
+                          <div className="flex-1 pr-2">
                             <div className={`font-bold ${isCancelled ? 'line-through' : ''}`}>
-                              {item.name} <span className="font-black">x{item.quantity}</span>
+                              {item.name} <span className="font-black text-amber-600">x{item.quantity}</span>
                             </div>
+
+                            {/* 🥗 แสดงรายการเครื่องเคียงเพิ่มเติม */}
+                            {item.selectedAddons && item.selectedAddons.length > 0 && (
+                              <div className="mt-1 bg-amber-50 p-1.5 rounded-lg border border-amber-200/60">
+                                <span className="text-[10px] font-bold text-amber-800 block">
+                                  🥗 เครื่องเคียงเพิ่มเติม:
+                                </span>
+                                <ul className="list-disc list-inside text-[10px] text-amber-900 font-semibold pl-1">
+                                  {item.selectedAddons.map((addon, aIdx) => (
+                                    <li key={aIdx}>
+                                      {addon.name} <span className="text-amber-700 font-normal">(+฿{addon.price})</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* 📝 แสดงโน้ตเพิ่มเติม */}
                             {item.note && (
-                              <div className="text-[10px] text-amber-600">
+                              <div className="text-[10px] text-amber-700 mt-1">
                                 📝 {item.note}
                               </div>
                             )}
+
                             {isCancelled && (
                               <div className="text-[10px] text-red-500 font-bold mt-0.5">
                                 ✕ ครัวยกเลิกรายการนี้แล้ว
@@ -329,7 +354,7 @@ export default function CashierPage() {
                             )}
                           </div>
 
-                          <div className={`font-bold ${isCancelled ? 'line-through text-red-400' : 'text-slate-700'}`}>
+                          <div className={`font-bold whitespace-nowrap ${isCancelled ? 'line-through text-red-400' : 'text-slate-700'}`}>
                             ฿{item.price * item.quantity}
                           </div>
                         </div>
@@ -347,7 +372,7 @@ export default function CashierPage() {
                 {/* ปุ่มกดเก็บเงิน */}
                 <button
                   onClick={() => handleConfirmPayment(order.id)}
-                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg text-sm"
+                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition shadow-lg text-sm active:scale-98"
                 >
                   💵 ชำระเงินเรียบร้อย
                 </button>
