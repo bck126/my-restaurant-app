@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 
@@ -24,12 +25,21 @@ interface Order {
 }
 
 export default function DashboardSales() {
+ const router = useRouter();
+
+  useEffect(() => {
+    const role = localStorage.getItem('userRole');
+    if (role !== 'dashboard' && role !== 'admin') {
+      alert('⚠️ คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
+      router.push('/login');
+    }
+  }, [router]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [reportTab, setReportTab] = useState<'summary' | 'daily' | 'monthly'>('summary');
 
-  // 🎯 State สำหรับเก็บค่าวันที่เริ่มต้นและสิ้นสุดในการกรองสินค้าขายดี (รูปแบบ YYYY-MM-DD)
+    // 🎯 State สำหรับเก็บค่าวันที่เริ่มต้นและสิ้นสุดในการกรองสินค้าขายดี (รูปแบบ YYYY-MM-DD)
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
