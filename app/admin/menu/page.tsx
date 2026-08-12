@@ -14,12 +14,18 @@ import {
 // 🔑 API Key ของ ImgBB สำหรับอัปโหลดรูปภาพฟรี
 const IMGBB_API_KEY = 'b17a4ff3cb7cea8b4c87d85a8ea450e9'; 
 
+export interface Addon {
+  name: string;
+  price: number;
+}
+
 interface MenuItem {
   id: string;
   name: string;
   price: number;
   category: string;
   imageUrl?: string;
+  addons?: Addon[];
 }
 
 export default function AdminMenu() {
@@ -35,6 +41,9 @@ export default function AdminMenu() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // 🥗 State สำหรับจัดการเครื่องเคียง
+  const [addons, setAddons] = useState<Addon[]>([]);
+
   // ดึงข้อมูลเมนูจาก Firebase Real-time
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'menu'), (snapshot) => {
@@ -47,6 +56,27 @@ export default function AdminMenu() {
 
     return () => unsubscribe();
   }, []);
+
+  // ฟังก์ชันจัดการรายการเครื่องเคียง (Add/Remove/Update)
+  const handleAddAddon = () => {
+    setAddons([...addons, { name: '', price: 0 }]);
+  };
+
+  const handleRemoveAddon = (index: number) => {
+    setAddons(addons.filter((_, i) => i !== index));
+  };
+
+  const handleAddonNameChange = (index: number, value: string) => {
+    const newAddons = [...addons];
+    newAddons[index].name = value;
+    setAddons(newAddons);
+  };
+
+  const handleAddonPriceChange = (index: number, value: string) => {
+    const newAddons = [...addons];
+    newAddons[index].price = Number(value) || 0;
+    setAddons(newAddons);
+  };
 
   // เลือกรูปจากเครื่อง/มือถือ
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,11 +119,15 @@ export default function AdminMenu() {
         finalImageUrl = await uploadToImgBB(imageFile);
       }
 
+      // คัดกรองเอาเฉพาะเครื่องเคียงที่มีชื่อระบุไว้
+      const validAddons = addons.filter((addon) => addon.name.trim() !== '');
+
       const menuData = {
         name,
         price: Number(price),
         category: category.trim() || 'ทั่วไป',
         imageUrl: finalImageUrl || 'https://placehold.co/150x150/e2e8f0/64748b?text=Food',
+        addons: validAddons, // 👈 บันทึกรายการเครื่องเคียงลง Firebase
         updatedAt: serverTimestamp(),
       };
 
@@ -126,6 +160,7 @@ export default function AdminMenu() {
     setImageUrl(item.imageUrl || '');
     setImagePreview(item.imageUrl || null);
     setImageFile(null);
+    setAddons(item.addons || []); // 👈 ดึงข้อมูลเครื่องเคียงที่มีอยู่เดิมขึ้นมาแก้ไข
   };
 
   // ลบเมนู
@@ -150,6 +185,7 @@ export default function AdminMenu() {
     setImageUrl('');
     setImageFile(null);
     setImagePreview(null);
+    setAddons([]);
   };
 
   // จัดกลุ่มเมนูแยกตามหมวดหมู่
@@ -237,6 +273,58 @@ export default function AdminMenu() {
             </div>
           </div>
 
+          {/* 🥗 ส่วนจัดการรายการเครื่องเคียงเพิ่มเติม */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-xs font-bold text-slate-700">
+                🥗 รายการเครื่องเคียงเพิ่ม (ออปชันเสริม)
+              </label>
+              <button
+                type="button"
+                onClick={handleAddAddon}
+                className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg hover:bg-emerald-100 transition"
+              >
+                + เพิ่มตัวเลือก
+              </button>
+            </div>
+
+            {addons.length === 0 ? (
+              <p className="text-xs text-slate-400 italic bg-slate-50 p-2.5 rounded-xl border border-dashed border-slate-200 text-center">
+                ยังไม่มีเครื่องเคียงสำหรับเมนูนี (กด + เพิ่มตัวเลือก ด้านบน)
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {addons.map((addon, index) => (
+                  <div key={index} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <input
+                      type="text"
+                      placeholder="ชื่อเครื่องเคียง เช่น เพิ่มไข่เค็ม"
+                      value={addon.name}
+                      onChange={(e) => handleAddonNameChange(index, e.target.value)}
+                      className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="ราคา"
+                      value={addon.price || ''}
+                      onChange={(e) => handleAddonPriceChange(index, e.target.value)}
+                      className="w-20 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs text-slate-400 font-bold">บ.</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAddon(index)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg text-xs font-bold"
+                      title="ลบตัวเลือกนี้"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* แสดงรูปตัวอย่าง */}
           {imagePreview && (
             <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
@@ -273,14 +361,12 @@ export default function AdminMenu() {
         </h2>
 
         {sortedCategories.map((catName) => {
-          // เรียงชื่อรายการอาหารภายในหมวดหมู่นั้นๆ ตามตัวอักษรไทย
           const sortedItems = [...groupedMenuItems[catName]].sort((a, b) =>
             a.name.localeCompare(b.name, 'th')
           );
 
           return (
             <div key={catName} className="space-y-2.5">
-              {/* แถบหัวข้อหมวดหมู่ */}
               <div className="flex items-center justify-between border-b border-slate-200 pb-1 px-1">
                 <span className="bg-slate-800 text-white font-black text-xs px-2.5 py-1 rounded-lg">
                   📂 {catName}
@@ -290,7 +376,6 @@ export default function AdminMenu() {
                 </span>
               </div>
 
-              {/* วนลูปแสดงเมนูในหมวดนี้ */}
               <div className="space-y-2">
                 {sortedItems.map((item) => (
                   <div 
@@ -305,11 +390,16 @@ export default function AdminMenu() {
                       />
                       <div>
                         <div className="font-bold text-slate-900 text-base">{item.name}</div>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-emerald-600 font-bold text-sm">{item.price} บาท</span>
                           <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-medium">
                             {item.category || 'ทั่วไป'}
                           </span>
+                          {item.addons && item.addons.length > 0 && (
+                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-medium">
+                              🥗 +{item.addons.length} เครื่องเคียง
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
