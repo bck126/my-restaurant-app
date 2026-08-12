@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+// ... import อื่นๆ ที่มีอยู่แล้ว ...
 import Link from 'next/link';
 import { db } from '../firebase'; 
 import { collection, onSnapshot, updateDoc, doc, query, orderBy, where } from 'firebase/firestore';
@@ -32,6 +34,16 @@ interface ServiceCall {
 }
 
 export default function CashierPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const role = localStorage.getItem('userRole');
+    // ตรวจสอบสิทธิ์ cashier หรือ admin
+    if (role !== 'cashier' && role !== 'admin') {
+      alert('⚠️ คุณไม่มีสิทธิ์เข้าถึงหน้าแคชเชียร์');
+      router.push('/login');
+    }
+  }, [router]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeCalls, setActiveCalls] = useState<ServiceCall[]>([]);
   const [isAudioAllowed, setIsAudioAllowed] = useState(false);
