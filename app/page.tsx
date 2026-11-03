@@ -234,8 +234,8 @@ function MenuContent() {
     return orderSum + validItemsTotal;
   }, 0);
 
-  const handleSendOrder = async () => {
-    if (cart.length === 0) return;
+const handleSendOrder = async () => {
+    if (cart.length === 0 || isSubmitting) return;
 
     if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
       alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
@@ -243,12 +243,21 @@ function MenuContent() {
     }
 
     setIsSubmitting(true);
+
+    // เก็บข้อมูลตะกร้า ณ ตอนกดสั่งไว้ก่อน
+    const orderItems = [...cart];
+    const orderTotalPrice = totalPrice;
+    const currentTable = String(tableParam);
+    const currentOrderType = orderType;
+    const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
+
     try {
+      // 1. บันทึกลง Firebase
       await addDoc(collection(db, 'orders'), {
-        table: String(tableParam),
-        orderType: orderType,
-        customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
-        items: cart.map((item) => ({
+        table: currentTable,
+        orderType: currentOrderType,
+        customerContact: currentContact,
+        items: orderItems.map((item) => ({
           id: item.id,
           name: item.name,
           price: item.price,
@@ -258,33 +267,33 @@ function MenuContent() {
           status: 'pending',
           itemStatus: 'pending',
         })),
-        totalPrice,
+        totalPrice: orderTotalPrice,
         status: 'pending',
         paymentStatus: 'unpaid',
         isPaid: false,
         createdAt: serverTimestamp(),
       });
-// 📲 ส่ง LINE แจ้งเตือนเข้ากลุ่ม (ยิงครั้งเดียวหลังบันทึก Firebase สำเร็จ)
-    const currentCartItems = [...cart];
-    const currentTotalPrice = totalPrice;
 
-    fetch('/api/line-notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        table: String(tableParam),
-        orderType: orderType,
-        customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
-        items: currentCartItems,
-        totalPrice: currentTotalPrice,
-      }),
-    }).catch((err) => console.error('Error sending LINE alert:', err));
-
+      // 2. เคลียร์ตะกร้าทันทีเพื่อป้องกันการกดซ้ำหรือ Re-render ลูป
       setCart([]);
       setCustomerContact('');
       setOrderSuccess(true);
       setActiveTab('menu');
       setTimeout(() => setOrderSuccess(false), 4000);
+
+      // 3. ยิง LINE แจ้งเตือนเพียงครั้งเดียว
+      await fetch('/api/line-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: currentTable,
+          orderType: currentOrderType,
+          customerContact: currentContact,
+          items: orderItems,
+          totalPrice: orderTotalPrice,
+        }),
+      });
+
     } catch (error) {
       console.error('Error sending order:', error);
       alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
@@ -292,7 +301,7 @@ function MenuContent() {
       setIsSubmitting(false);
     }
   };
-
+  
   const handleCallStaff = async () => {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
       try {
