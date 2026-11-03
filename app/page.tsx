@@ -234,19 +234,6 @@ function MenuContent() {
     return orderSum + validItemsTotal;
   }, 0);
 
-// 📲 ส่ง LINE แจ้งเตือนเข้ากลุ่ม
-      fetch('/api/line-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table: String(tableParam),
-          orderType: orderType,
-          customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
-          items: cart,
-          totalPrice: totalPrice,
-        }),
-      }).catch((err) => console.error('Error sending LINE alert:', err));
-
   const handleSendOrder = async () => {
     if (cart.length === 0) return;
 
@@ -277,6 +264,21 @@ function MenuContent() {
         isPaid: false,
         createdAt: serverTimestamp(),
       });
+// 📲 ส่ง LINE แจ้งเตือนเข้ากลุ่ม (ยิงครั้งเดียวหลังบันทึก Firebase สำเร็จ)
+    const currentCartItems = [...cart];
+    const currentTotalPrice = totalPrice;
+
+    fetch('/api/line-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table: String(tableParam),
+        orderType: orderType,
+        customerContact: orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '',
+        items: currentCartItems,
+        totalPrice: currentTotalPrice,
+      }),
+    }).catch((err) => console.error('Error sending LINE alert:', err));
 
       setCart([]);
       setCustomerContact('');
