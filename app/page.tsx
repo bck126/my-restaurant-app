@@ -234,7 +234,7 @@ function MenuContent() {
     return orderSum + validItemsTotal;
   }, 0);
 
-const handleSendOrder = async () => {
+  const handleSendOrder = async () => {
     if (cart.length === 0 || isSubmitting) return;
 
     if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
@@ -244,20 +244,20 @@ const handleSendOrder = async () => {
 
     setIsSubmitting(true);
 
-    // เก็บข้อมูลตะกร้า ณ ตอนกดสั่งไว้ก่อน
-    const orderItems = [...cart];
-    const orderTotalPrice = totalPrice;
+    // 1. ดึงรายการอาหารไว้ก่อนเคลียร์ตะกร้า
+    const currentCartItems = [...cart];
+    const currentTotalPrice = totalPrice;
     const currentTable = String(tableParam);
     const currentOrderType = orderType;
     const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
 
     try {
-      // 1. บันทึกลง Firebase
+      // 2. บันทึกลง Firebase Firestore (โค้ดเดิมของคุณ)
       await addDoc(collection(db, 'orders'), {
         table: currentTable,
         orderType: currentOrderType,
         customerContact: currentContact,
-        items: orderItems.map((item) => ({
+        items: currentCartItems.map((item) => ({
           id: item.id,
           name: item.name,
           price: item.price,
@@ -267,21 +267,14 @@ const handleSendOrder = async () => {
           status: 'pending',
           itemStatus: 'pending',
         })),
-        totalPrice: orderTotalPrice,
+        totalPrice: currentTotalPrice,
         status: 'pending',
         paymentStatus: 'unpaid',
         isPaid: false,
         createdAt: serverTimestamp(),
       });
 
-      // 2. เคลียร์ตะกร้าทันทีเพื่อป้องกันการกดซ้ำหรือ Re-render ลูป
-      setCart([]);
-      setCustomerContact('');
-      setOrderSuccess(true);
-      setActiveTab('menu');
-      setTimeout(() => setOrderSuccess(false), 4000);
-
-      // 3. ยิง LINE แจ้งเตือนเพียงครั้งเดียว
+      // 3. 📲 ยิงส่ง LINE แจ้งเตือนตรงนี้ (จะยิงเฉพาะตอนกดปุ่มและบันทึก Firebase สำเร็จเท่านั้น!)
       await fetch('/api/line-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -289,11 +282,17 @@ const handleSendOrder = async () => {
           table: currentTable,
           orderType: currentOrderType,
           customerContact: currentContact,
-          items: orderItems,
-          totalPrice: orderTotalPrice,
+          items: currentCartItems,
+          totalPrice: currentTotalPrice,
         }),
       });
 
+      // 4. เคลียร์ค่าหน้าจอ
+      setCart([]);
+      setCustomerContact('');
+      setOrderSuccess(true);
+      setActiveTab('menu');
+      setTimeout(() => setOrderSuccess(false), 4000);
     } catch (error) {
       console.error('Error sending order:', error);
       alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
