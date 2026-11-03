@@ -236,29 +236,37 @@ function MenuContent() {
   }, 0);
 
   const handleSendOrder = async () => {
-    // 🛑 ป้องกันการกดซ้ำด้วย useRef และเช็กว่าตะกร้าว่างจริงไหม
-    if (isSubmittingRef.current || cart.length === 0) return;
+    // 🛑 1. ป้องกันการกดซ้ำด้วย useRef และเช็กว่าตะกร้าต้องไม่ว่างเปล่า
+    if (isSubmittingRef.current || !cart || cart.length === 0) return;
 
     if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
       alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
       return;
     }
 
-    // 🔒 ล็อกสถานะทันทีแบบเรียลไทม์
+    // 🔒 2. ล็อกสถานะทันที ป้องกันการกดเบิ้ลรัวๆ
     isSubmittingRef.current = true;
 
-    // ก๊อปปี้ข้อมูลตะกร้าปัจจุบันเก็บไว้ทันทีก่อนเคลียร์ค่า
+    // 3. ก๊อปปี้ข้อมูลปัจจุบันเก็บไว้ในตัวแปรท้องถิ่นทันที
     const currentCartItems = [...cart];
-    const currentTotalPrice = totalPrice;
-    const currentTable = String(tableParam);
+    const currentTotalPrice = Number(totalPrice) || 0;
+    const currentTable = String(tableParam || '1');
     const currentOrderType = orderType;
     const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
 
-    // 🧹 เคลียร์ตะกร้าบนหน้าจอ "ทันทีก่อนเริ่มบันทึก" เพื่อบล็อกไม่ให้กดซ้ำได้อีกรอบเด็ดขาด
+    // เช็กดักกันเหนียว: ถ้าไม่มีสินค้าในตะกร้า ห้ามส่งเด็ดขาด
+    if (currentCartItems.length === 0 || currentTotalPrice <= 0) {
+      alert('⚠️ ไม่มีรายการอาหารในตะกร้าครับ');
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    // 🧹 4. เคลียร์หน้าจอทันทีเพื่อบล็อกการกดซ้ำจาก UI
     setCart([]);
+    setCustomerContact('');
 
     try {
-      // 1. บันทึกลง Firebase Firestore
+      // 5. บันทึกลง Firebase Firestore เพียงครั้งเดียว
       await addDoc(collection(db, 'orders'), {
         table: currentTable,
         orderType: currentOrderType,
@@ -268,7 +276,7 @@ function MenuContent() {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-          note: item.note,
+          note: item.note || '',
           selectedAddons: item.selectedAddons || [],
           status: 'pending',
           itemStatus: 'pending',
@@ -280,8 +288,8 @@ function MenuContent() {
         createdAt: serverTimestamp(),
       });
 
-      // 2. 📲 ยิง LINE แจ้งเตือน (ครั้งเดียวจบ)
-      await fetch('/api/line-notify', {
+      // 6. 📲 ใช้วิธีเรียก API ยิง LINE แจ้งเตือนเพียงครั้งเดียว
+      const lineRes = await fetch('/api/line-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -293,7 +301,10 @@ function MenuContent() {
         }),
       });
 
-      setCustomerContact('');
+      if (!lineRes.ok) {
+        console.error('Failed to send LINE notification');
+      }
+
       setOrderSuccess(true);
       setActiveTab('menu');
       setTimeout(() => setOrderSuccess(false), 4000);
@@ -301,10 +312,10 @@ function MenuContent() {
       console.error('Error sending order:', error);
       alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
     } finally {
-      // 🔓 ปลดล็อกสถานะหลังจากทำงานเสร็จสิ้นทั้งหมด
+      // 🔓 ปลดล็อกสถานะหลังจากกระบวนการทั้งหมดเสร็จสิ้น
       isSubmittingRef.current = false;
     }
-  }; 
+  };
       
   const handleCallStaff = async () => {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
