@@ -236,73 +236,75 @@ function MenuContent() {
   }, 0);
 
   const handleSendOrder = async () => {
-  // 🛑 ถ้ากำลังส่งอยู่แล้ว หรือตะกร้าว่าง ให้หยุดทันที
-  if (isSubmittingRef.current || cart.length === 0) return;
+    // 🛑 ป้องกันการกดซ้ำด้วย useRef และเช็กว่าตะกร้าว่างจริงไหม
+    if (isSubmittingRef.current || cart.length === 0) return;
 
-  if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
-    alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
-    return;
-  }
+    if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
+      alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
+      return;
+    }
 
-  // 🔒 ล็อกสถานะทันทีก่อนใครเพื่อน
-  isSubmittingRef.current = true;
+    // 🔒 ล็อกสถานะทันทีแบบเรียลไทม์
+    isSubmittingRef.current = true;
 
-  const currentCartItems = [...cart];
-  const currentTotalPrice = totalPrice;
-  const currentTable = String(tableParam);
-  const currentOrderType = orderType;
-  const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
+    // ก๊อปปี้ข้อมูลตะกร้าปัจจุบันเก็บไว้ทันทีก่อนเคลียร์ค่า
+    const currentCartItems = [...cart];
+    const currentTotalPrice = totalPrice;
+    const currentTable = String(tableParam);
+    const currentOrderType = orderType;
+    const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
 
-  try {
-    // 1. บันทึกลง Firebase Firestore
-    await addDoc(collection(db, 'orders'), {
-      table: currentTable,
-      orderType: currentOrderType,
-      customerContact: currentContact,
-      items: currentCartItems.map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        note: item.note,
-        selectedAddons: item.selectedAddons || [],
-        status: 'pending',
-        itemStatus: 'pending',
-      })),
-      totalPrice: currentTotalPrice,
-      status: 'pending',
-      paymentStatus: 'unpaid',
-      isPaid: false,
-      createdAt: serverTimestamp(),
-    });
+    // 🧹 เคลียร์ตะกร้าบนหน้าจอ "ทันทีก่อนเริ่มบันทึก" เพื่อบล็อกไม่ให้กดซ้ำได้อีกรอบเด็ดขาด
+    setCart([]);
 
-    // 2. 📲 ยิงส่ง LINE ครั้งเดียวจบ
-    await fetch('/api/line-notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      // 1. บันทึกลง Firebase Firestore
+      await addDoc(collection(db, 'orders'), {
         table: currentTable,
         orderType: currentOrderType,
         customerContact: currentContact,
-        items: currentCartItems,
+        items: currentCartItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          note: item.note,
+          selectedAddons: item.selectedAddons || [],
+          status: 'pending',
+          itemStatus: 'pending',
+        })),
         totalPrice: currentTotalPrice,
-      }),
-    });
+        status: 'pending',
+        paymentStatus: 'unpaid',
+        isPaid: false,
+        createdAt: serverTimestamp(),
+      });
 
-    // 3. เคลียร์ค่าหน้าจอ
-    setCart([]);
-    setCustomerContact('');
-    setOrderSuccess(true);
-    setActiveTab('menu');
-    setTimeout(() => setOrderSuccess(false), 4000);
-  } catch (error) {
-    console.error('Error sending order:', error);
-    alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
-  } finally {
-    // 🔓 ปลดล็อกสถานะเมื่อทำงานเสร็จ
-    isSubmittingRef.current = false;
-  }
-};
+      // 2. 📲 ยิง LINE แจ้งเตือน (ครั้งเดียวจบ)
+      await fetch('/api/line-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: currentTable,
+          orderType: currentOrderType,
+          customerContact: currentContact,
+          items: currentCartItems,
+          totalPrice: currentTotalPrice,
+        }),
+      });
+
+      setCustomerContact('');
+      setOrderSuccess(true);
+      setActiveTab('menu');
+      setTimeout(() => setOrderSuccess(false), 4000);
+    } catch (error) {
+      console.error('Error sending order:', error);
+      alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      // 🔓 ปลดล็อกสถานะหลังจากทำงานเสร็จสิ้นทั้งหมด
+      isSubmittingRef.current = false;
+    }
+  }; 
       
   const handleCallStaff = async () => {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
