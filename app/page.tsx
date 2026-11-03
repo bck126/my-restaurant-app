@@ -1,6 +1,6 @@
 'use client';
 import MenuItemSelector, { Addon } from './MenuItemSelector';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { db } from './firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -66,6 +66,7 @@ function MenuContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('ทั้งหมด');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'bill'>('menu');
@@ -235,72 +236,74 @@ function MenuContent() {
   }, 0);
 
   const handleSendOrder = async () => {
-    if (cart.length === 0 || isSubmitting) return;
+  // 🛑 ถ้ากำลังส่งอยู่แล้ว หรือตะกร้าว่าง ให้หยุดทันที
+  if (isSubmittingRef.current || cart.length === 0) return;
 
-    if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
-      alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
-      return;
-    }
+  if (orderType === 'ซื้อกลับบ้าน' && !customerContact.trim()) {
+    alert('⚠️ กรุณาระบุชื่อลูกค้า หรือ เบอร์โทรศัพท์ สำหรับการสั่งซื้อกลับบ้านครับ');
+    return;
+  }
 
-    setIsSubmitting(true);
+  // 🔒 ล็อกสถานะทันทีก่อนใครเพื่อน
+  isSubmittingRef.current = true;
 
-    // 1. ดึงรายการอาหารไว้ก่อนเคลียร์ตะกร้า
-    const currentCartItems = [...cart];
-    const currentTotalPrice = totalPrice;
-    const currentTable = String(tableParam);
-    const currentOrderType = orderType;
-    const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
+  const currentCartItems = [...cart];
+  const currentTotalPrice = totalPrice;
+  const currentTable = String(tableParam);
+  const currentOrderType = orderType;
+  const currentContact = orderType === 'ซื้อกลับบ้าน' ? customerContact.trim() : '';
 
-    try {
-      // 2. บันทึกลง Firebase Firestore (โค้ดเดิมของคุณ)
-      await addDoc(collection(db, 'orders'), {
+  try {
+    // 1. บันทึกลง Firebase Firestore
+    await addDoc(collection(db, 'orders'), {
+      table: currentTable,
+      orderType: currentOrderType,
+      customerContact: currentContact,
+      items: currentCartItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        note: item.note,
+        selectedAddons: item.selectedAddons || [],
+        status: 'pending',
+        itemStatus: 'pending',
+      })),
+      totalPrice: currentTotalPrice,
+      status: 'pending',
+      paymentStatus: 'unpaid',
+      isPaid: false,
+      createdAt: serverTimestamp(),
+    });
+
+    // 2. 📲 ยิงส่ง LINE ครั้งเดียวจบ
+    await fetch('/api/line-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         table: currentTable,
         orderType: currentOrderType,
         customerContact: currentContact,
-        items: currentCartItems.map((item) => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          note: item.note,
-          selectedAddons: item.selectedAddons || [],
-          status: 'pending',
-          itemStatus: 'pending',
-        })),
+        items: currentCartItems,
         totalPrice: currentTotalPrice,
-        status: 'pending',
-        paymentStatus: 'unpaid',
-        isPaid: false,
-        createdAt: serverTimestamp(),
-      });
+      }),
+    });
 
-      // 3. 📲 ยิงส่ง LINE แจ้งเตือนตรงนี้ (จะยิงเฉพาะตอนกดปุ่มและบันทึก Firebase สำเร็จเท่านั้น!)
-      await fetch('/api/line-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table: currentTable,
-          orderType: currentOrderType,
-          customerContact: currentContact,
-          items: currentCartItems,
-          totalPrice: currentTotalPrice,
-        }),
-      });
-
-      // 4. เคลียร์ค่าหน้าจอ
-      setCart([]);
-      setCustomerContact('');
-      setOrderSuccess(true);
-      setActiveTab('menu');
-      setTimeout(() => setOrderSuccess(false), 4000);
-    } catch (error) {
-      console.error('Error sending order:', error);
-      alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  
+    // 3. เคลียร์ค่าหน้าจอ
+    setCart([]);
+    setCustomerContact('');
+    setOrderSuccess(true);
+    setActiveTab('menu');
+    setTimeout(() => setOrderSuccess(false), 4000);
+  } catch (error) {
+    console.error('Error sending order:', error);
+    alert('เกิดข้อผิดพลาดในการส่งออเดอร์ กรุณาลองใหม่อีกครั้ง');
+  } finally {
+    // 🔓 ปลดล็อกสถานะเมื่อทำงานเสร็จ
+    isSubmittingRef.current = false;
+  }
+};
+      
   const handleCallStaff = async () => {
     if (confirm(`เรียกพนักงานมาที่ โต๊ะ ${tableParam} หรือไม่?`)) {
       try {
